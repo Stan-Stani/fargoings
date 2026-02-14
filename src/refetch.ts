@@ -3,12 +3,21 @@ import { FargoFetcher } from './fetchers/fargomoorhead-com';
 import { FargoUndergroundFetcher } from './fetchers/fargounderground-com';
 import { DowntownFargoFetcher } from './fetchers/downtownfargo-com';
 
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 async function main() {
   console.log('🔄 Force re-fetching all sources (ignoring cache)...\n');
 
   const db = new EventDatabase();
 
   try {
+    const today = getLocalDateString(new Date());
+
     // Clear all events and matches
     db.clearMatches();
     db.deleteEventsBySource('fargomoorhead.org');
@@ -23,6 +32,7 @@ async function main() {
     for (const event of fargoEvents) {
       db.insertEvent(fargoFetcher.transformToStoredEvent(event));
     }
+    db.setSourceLastUpdatedDate('fargomoorhead.org', today);
     console.log(`✓ Stored ${fargoEvents.length} events\n`);
 
     // Fetch fargounderground.com
@@ -32,15 +42,17 @@ async function main() {
     for (const event of undergroundEvents) {
       db.insertEvent(undergroundFetcher.transformToStoredEvent(event));
     }
+    db.setSourceLastUpdatedDate('fargounderground.com', today);
     console.log(`✓ Stored ${undergroundEvents.length} events\n`);
 
     // Fetch downtownfargo.com
     console.log('📥 Fetching downtownfargo.com...');
     const downtownFetcher = new DowntownFargoFetcher();
-    const downtownEvents = await downtownFetcher.fetchEvents(14, new Set());
+    const downtownEvents = await downtownFetcher.fetchEvents(14);
     for (const event of downtownEvents) {
       db.insertEvent(downtownFetcher.transformToStoredEvent(event));
     }
+    db.setSourceLastUpdatedDate('downtownfargo.com', today);
     console.log(`✓ Stored ${downtownEvents.length} events\n`);
 
     console.log(`📊 Total: ${db.getTotalCount()} events`);

@@ -1,78 +1,126 @@
-import 'dotenv/config';
-import { EventDatabase } from './db/database';
-import { FargoFetcher } from './fetchers/fargomoorhead-com';
-import { FargoUndergroundFetcher } from './fetchers/fargounderground-com';
-import { DowntownFargoFetcher } from './fetchers/downtownfargo-com';
-import { findMatches } from './dedup/matcher';
-import { decodeHtmlEntities } from './dedup/normalize';
+import "dotenv/config"
+import { EventDatabase } from "./db/database"
+import { findMatches } from "./dedup/matcher"
+import { decodeHtmlEntities } from "./dedup/normalize"
+import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
+import { FargoFetcher } from "./fetchers/fargomoorhead-com"
+import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
+
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
 
 async function main() {
-  console.log('🎉 Fargo Event Aggregator Starting...\n');
+  console.log("🎉 Fargo Event Aggregator Starting...\n")
 
-  const db = new EventDatabase();
-  const fargoFetcher = new FargoFetcher();
-  const undergroundFetcher = new FargoUndergroundFetcher();
-  const downtownFetcher = new DowntownFargoFetcher();
+  const db = new EventDatabase()
+  const fargoFetcher = new FargoFetcher()
+  const undergroundFetcher = new FargoUndergroundFetcher()
+  const downtownFetcher = new DowntownFargoFetcher()
 
   try {
-    // Fetch from fargomoorhead.org
-    console.log('📥 Fetching events from fargomoorhead.org (next 2 weeks)...');
-    const fargoEvents = await fargoFetcher.fetchEvents();
-    console.log(`✓ Fetched ${fargoEvents.length} events\n`);
+    const today = getLocalDateString(new Date())
+    const fargoLastUpdated = db.getSourceLastUpdatedDate("fargomoorhead.org")
+    const undergroundLastUpdated = db.getSourceLastUpdatedDate(
+      "fargounderground.com",
+    )
+    const downtownLastUpdated = db.getSourceLastUpdatedDate("downtownfargo.com")
+    const freshCount = [
+      fargoLastUpdated,
+      undergroundLastUpdated,
+      downtownLastUpdated,
+    ].filter((date) => date === today).length
+    const staleCount = 3 - freshCount
+    console.log(`🧊 Cache status: ${freshCount} fresh, ${staleCount} stale`)
 
-    console.log('💾 Storing fargomoorhead.org events...');
-    let fargoInserted = 0;
-    for (const event of fargoEvents) {
-      const storedEvent = fargoFetcher.transformToStoredEvent(event);
-      db.insertEvent(storedEvent);
-      fargoInserted++;
+    // Fetch from fargomoorhead.org
+    console.log(
+      `   fargomoorhead.org cache date: ${fargoLastUpdated || "never"} (today: ${today})`,
+    )
+    if (fargoLastUpdated === today) {
+      console.log("⏭️  Using cached fargomoorhead.org events (fresh today).\n")
+    } else {
+      console.log("📥 Fetching events from fargomoorhead.org (next 2 weeks)...")
+      const fargoEvents = await fargoFetcher.fetchEvents()
+      console.log(`✓ Fetched ${fargoEvents.length} events\n`)
+
+      console.log("💾 Storing fargomoorhead.org events...")
+      let fargoInserted = 0
+      for (const event of fargoEvents) {
+        const storedEvent = fargoFetcher.transformToStoredEvent(event)
+        db.insertEvent(storedEvent)
+        fargoInserted++
+      }
+      db.setSourceLastUpdatedDate("fargomoorhead.org", today)
+      console.log(`✓ Processed ${fargoInserted} events\n`)
     }
-    console.log(`✓ Processed ${fargoInserted} events\n`);
 
     // Fetch from fargounderground.com
-    console.log('📥 Fetching events from fargounderground.com (next 2 weeks)...');
-    const undergroundEvents = await undergroundFetcher.fetchEvents();
-    console.log(`✓ Fetched ${undergroundEvents.length} events\n`);
+    console.log(
+      `   fargounderground.com cache date: ${undergroundLastUpdated || "never"} (today: ${today})`,
+    )
+    if (undergroundLastUpdated === today) {
+      console.log(
+        "⏭️  Using cached fargounderground.com events (fresh today).\n",
+      )
+    } else {
+      console.log(
+        "📥 Fetching events from fargounderground.com (next 2 weeks)...",
+      )
+      const undergroundEvents = await undergroundFetcher.fetchEvents()
+      console.log(`✓ Fetched ${undergroundEvents.length} events\n`)
 
-    console.log('💾 Storing fargounderground.com events...');
-    let undergroundInserted = 0;
-    for (const event of undergroundEvents) {
-      const storedEvent = undergroundFetcher.transformToStoredEvent(event);
-      db.insertEvent(storedEvent);
-      undergroundInserted++;
+      console.log("💾 Storing fargounderground.com events...")
+      let undergroundInserted = 0
+      for (const event of undergroundEvents) {
+        const storedEvent = undergroundFetcher.transformToStoredEvent(event)
+        db.insertEvent(storedEvent)
+        undergroundInserted++
+      }
+      db.setSourceLastUpdatedDate("fargounderground.com", today)
+      console.log(`✓ Processed ${undergroundInserted} events\n`)
     }
-    console.log(`✓ Processed ${undergroundInserted} events\n`);
 
-    // Fetch from downtownfargo.com (only fetch details for new events)
-    console.log('📥 Fetching events from downtownfargo.com (next 2 weeks)...');
-    const existingDowntownIds = db.getEventIdsBySource('downtownfargo.com');
-    const downtownEvents = await downtownFetcher.fetchEvents(14, existingDowntownIds);
-    console.log(`✓ Fetched ${downtownEvents.length} events\n`);
+    // Fetch from downtownfargo.com
+    console.log(
+      `   downtownfargo.com cache date: ${downtownLastUpdated || "never"} (today: ${today})`,
+    )
+    if (downtownLastUpdated === today) {
+      console.log("⏭️  Using cached downtownfargo.com events (fresh today).\n")
+    } else {
+      console.log("📥 Fetching events from downtownfargo.com (next 2 weeks)...")
+      const downtownEvents = await downtownFetcher.fetchEvents(14)
+      console.log(`✓ Fetched ${downtownEvents.length} events\n`)
 
-    console.log('💾 Storing downtownfargo.com events...');
-    let downtownInserted = 0;
-    for (const event of downtownEvents) {
-      const storedEvent = downtownFetcher.transformToStoredEvent(event);
-      db.insertEvent(storedEvent);
-      downtownInserted++;
+      console.log("💾 Storing downtownfargo.com events...")
+      let downtownInserted = 0
+      for (const event of downtownEvents) {
+        const storedEvent = downtownFetcher.transformToStoredEvent(event)
+        db.insertEvent(storedEvent)
+        downtownInserted++
+      }
+      db.setSourceLastUpdatedDate("downtownfargo.com", today)
+      console.log(`✓ Processed ${downtownInserted} events\n`)
     }
-    console.log(`✓ Processed ${downtownInserted} events\n`);
 
     // Deduplicate events across all sources
-    console.log('🔍 Finding duplicate events...');
-    const fargoStored = db.getEventsBySource('fargomoorhead.org');
-    const undergroundStored = db.getEventsBySource('fargounderground.com');
-    const downtownStored = db.getEventsBySource('downtownfargo.com');
+    console.log("🔍 Finding duplicate events...")
+    const fargoStored = db.getEventsBySource("fargomoorhead.org")
+    const undergroundStored = db.getEventsBySource("fargounderground.com")
+    const downtownStored = db.getEventsBySource("downtownfargo.com")
 
     // Find matches between all source pairs
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
-    ];
+    ]
 
-    db.clearMatches();
-    const byConfidence = { high: 0, medium: 0, low: 0 };
+    db.clearMatches()
+    const byConfidence = { high: 0, medium: 0, low: 0 }
     for (const match of allMatches) {
       db.insertMatch({
         eventId1: match.eventId1,
@@ -80,53 +128,57 @@ async function main() {
         score: match.totalScore,
         confidence: match.confidence,
         reasons: match.reasons,
-        matchType: 'auto',
-      });
-      byConfidence[match.confidence]++;
+        matchType: "auto",
+      })
+      byConfidence[match.confidence]++
     }
-    console.log(`✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`);
+    console.log(
+      `✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`,
+    )
 
     // Stats
-    const totalCount = db.getTotalCount();
-    const dedupedCount = db.getDeduplicatedCount();
-    console.log(`📊 Statistics:`);
-    console.log(`   Total events:  ${totalCount}`);
-    console.log(`   After dedup:   ${dedupedCount}`);
-    console.log(`   Duplicates:    ${totalCount - dedupedCount}`);
+    const totalCount = db.getTotalCount()
+    const dedupedCount = db.getDeduplicatedCount()
+    console.log(`📊 Statistics:`)
+    console.log(`   Total events:  ${totalCount}`)
+    console.log(`   After dedup:   ${dedupedCount}`)
+    console.log(`   Duplicates:    ${totalCount - dedupedCount}`)
 
     // Show upcoming deduplicated events
-    console.log('\n📅 Upcoming Events (next 10, deduplicated):');
-    const upcomingEvents = db.getDeduplicatedEvents(10);
+    console.log("\n📅 Upcoming Events (next 10, deduplicated):")
+    const upcomingEvents = db.getDeduplicatedEvents(10)
     upcomingEvents.forEach((event, index) => {
       // Format date directly to avoid timezone issues (date is stored as YYYY-MM-DD)
-      const [year, month, day] = event.date.split('-');
-      const eventDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
-      let timeStr = '';
+      const [year, month, day] = event.date.split("-")
+      const eventDate = `${parseInt(month)}/${parseInt(day)}/${year}`
+      let timeStr = ""
       if (event.startTime) {
-        const [h, m] = event.startTime.split(':').map(Number);
-        const hour = h % 12 || 12;
-        const ampm = h < 12 ? 'AM' : 'PM';
-        timeStr = ` at ${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+        const [h, m] = event.startTime.split(":").map(Number)
+        const hour = h % 12 || 12
+        const ampm = h < 12 ? "AM" : "PM"
+        timeStr = ` at ${hour}:${m.toString().padStart(2, "0")} ${ampm}`
       }
-      const title = decodeHtmlEntities(event.title);
-      const location = event.location ? decodeHtmlEntities(event.location) : 'Location TBD';
-      console.log(`   ${index + 1}. ${title}`);
-      console.log(`      📍 ${location}`);
-      console.log(`      📆 ${eventDate}${timeStr}`);
-      console.log(`      🔗 ${event.url}`);
+      const title = decodeHtmlEntities(event.title)
+      const location = event.location
+        ? decodeHtmlEntities(event.location)
+        : "Location TBD"
+      console.log(`   ${index + 1}. ${title}`)
+      console.log(`      📍 ${location}`)
+      console.log(`      📆 ${eventDate}${timeStr}`)
+      console.log(`      🔗 ${event.url}`)
       if (event.altUrl) {
-        console.log(`      🔗 ${event.altUrl} (alt)`);
+        console.log(`      🔗 ${event.altUrl} (alt)`)
       }
-      console.log('');
-    });
+      console.log("")
+    })
 
-    console.log('✅ Event aggregation complete!');
+    console.log("✅ Event aggregation complete!")
   } catch (error) {
-    console.error('❌ Error:', error);
-    process.exit(1);
+    console.error("❌ Error:", error)
+    process.exit(1)
   } finally {
-    db.close();
+    db.close()
   }
 }
 
-main();
+main()

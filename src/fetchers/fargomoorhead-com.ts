@@ -1,66 +1,91 @@
-import { FargoAPIResponse, FargoEvent, StoredEvent } from '../types/event';
+import { FargoAPIResponse, FargoEvent, StoredEvent } from "../types/event"
 
 export class FargoFetcher {
-  private readonly baseUrl = 'https://www.fargomoorhead.org/includes/rest_v2/plugins_events_events_by_date/find/';
-  private readonly tokenUrl = 'https://www.fargomoorhead.org/plugins/core/get_simple_token/';
-  private cachedToken: string | null = null;
-  private tokenExpiresAt: number = 0;
+  private readonly baseUrl =
+    "https://www.fargomoorhead.org/includes/rest_v2/plugins_events_events_by_date/find/"
+  private readonly tokenUrl =
+    "https://www.fargomoorhead.org/plugins/core/get_simple_token/"
+  private cachedToken: string | null = null
+  private tokenExpiresAt: number = 0
 
   /**
    * Fetches a fresh API token from the Fargo Moorhead website.
    * Tokens expire after 24 hours according to the API response headers.
    */
   private async getToken(): Promise<string> {
-    const now = Date.now();
+    const now = Date.now()
 
     // Return cached token if it's still valid (with 1 hour buffer before expiration)
     if (this.cachedToken && now < this.tokenExpiresAt - 3600000) {
-      return this.cachedToken;
+      return this.cachedToken
     }
 
     try {
-      const response = await fetch(this.tokenUrl);
+      const response = await fetch(this.tokenUrl)
       if (!response.ok) {
-        throw new Error(`Failed to fetch token: ${response.status}`);
+        throw new Error(`Failed to fetch token: ${response.status}`)
       }
 
-      this.cachedToken = await response.text();
+      this.cachedToken = await response.text()
       // Token is valid for 24 hours based on s-maxage header
-      this.tokenExpiresAt = now + 86400000; // 24 hours in milliseconds
+      this.tokenExpiresAt = now + 86400000 // 24 hours in milliseconds
 
-      console.log('✓ Fetched fresh API token (valid for 24 hours)');
-      return this.cachedToken;
+      console.log("✓ Fetched fresh API token (valid for 24 hours)")
+      return this.cachedToken
     } catch (error) {
-      console.error('Error fetching API token:', error);
-      throw error;
+      console.error("Error fetching API token:", error)
+      throw error
     }
   }
 
-  async fetchEvents(limit: number = 500, daysAhead: number = 14): Promise<FargoEvent[]> {
-    const token = await this.getToken();
+  async fetchEvents(
+    limit: number = 500,
+    daysAhead: number = 14,
+  ): Promise<FargoEvent[]> {
+    const token = await this.getToken()
 
     // Calculate dynamic date range: today to N days ahead
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + daysAhead);
+    const startDate = new Date()
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(startDate)
+    endDate.setDate(endDate.getDate() + daysAhead)
 
-    console.log(`   Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+    console.log(
+      `   Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`,
+    )
 
     const filter = {
       filter: {
         active: true,
         $and: [
           {
-            'categories.catId': {
-              $in: ['4', '8', '9', '20', '21', '10', '13', '3', '7', '16', '5', '18', '22', '6', '23', '2', '24']
-            }
-          }
+            "categories.catId": {
+              $in: [
+                "4",
+                "8",
+                "9",
+                "20",
+                "21",
+                "10",
+                "13",
+                "3",
+                "7",
+                "16",
+                "5",
+                "18",
+                "22",
+                "6",
+                "23",
+                "2",
+                "24",
+              ],
+            },
+          },
         ],
         date_range: {
           start: { $date: startDate.toISOString() },
-          end: { $date: endDate.toISOString() }
-        }
+          end: { $date: endDate.toISOString() },
+        },
       },
       options: {
         limit,
@@ -86,32 +111,32 @@ export class FargoFetcher {
           accountId: 1,
           city: 1,
           region: 1,
-          'listing.primary_category': 1,
-          'listing.recid': 1,
-          'listing.acctid': 1,
-          'listing.city': 1,
-          'listing.region': 1,
-          'listing.title': 1,
-          'listing.url': 1,
-          'listing.rankname': 1
+          "listing.primary_category": 1,
+          "listing.recid": 1,
+          "listing.acctid": 1,
+          "listing.city": 1,
+          "listing.region": 1,
+          "listing.title": 1,
+          "listing.url": 1,
+          "listing.rankname": 1,
         },
         hooks: [],
-        sort: { date: 1, rank: 1, title_sort: 1 }
-      }
-    };
+        sort: { date: 1, rank: 1, title_sort: 1 },
+      },
+    }
 
-    const url = `${this.baseUrl}?json=${encodeURIComponent(JSON.stringify(filter))}&token=${token}`;
+    const url = `${this.baseUrl}?json=${encodeURIComponent(JSON.stringify(filter))}&token=${token}`
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(url)
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
-      const data: FargoAPIResponse = await response.json();
-      return data.docs.docs;
+      const data = (await response.json()) as FargoAPIResponse
+      return data.docs.docs
     } catch (error) {
-      console.error('Error fetching Fargo events:', error);
-      throw error;
+      console.error("Error fetching Fargo events:", error)
+      throw error
     }
   }
 
@@ -119,14 +144,16 @@ export class FargoFetcher {
     // API returns UTC timestamps like "2026-02-15T05:59:59.000Z"
     // which is actually Feb 14 11:59 PM Central Time
     // Parse and extract local date, not UTC date
-    const date = new Date(isoString);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const date = new Date(isoString)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
   }
 
-  transformToStoredEvent(event: FargoEvent): Omit<StoredEvent, 'id' | 'createdAt' | 'updatedAt'> {
+  transformToStoredEvent(
+    event: FargoEvent,
+  ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
     return {
       eventId: event._id,
       title: event.title,
@@ -139,9 +166,12 @@ export class FargoFetcher {
       latitude: event.latitude || null,
       longitude: event.longitude || null,
       city: event.city || null,
-      imageUrl: event.media_raw && event.media_raw.length > 0 ? event.media_raw[0].mediaurl : null,
+      imageUrl:
+        event.media_raw && event.media_raw.length > 0
+          ? event.media_raw[0].mediaurl
+          : null,
       categories: JSON.stringify(event.categories),
-      source: 'fargomoorhead.org'
-    };
+      source: "fargomoorhead.org",
+    }
   }
 }
