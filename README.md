@@ -30,7 +30,8 @@ npm start
 ## Scripts
 
 - `npm start` - Fetch events from all sources and deduplicate (uses 1-day cache per source)
-- `npm run browse` - Browse all events in the database
+- `npm run browse` - Browse deduplicated events (default view)
+- `npm run browse:raw` - Browse raw events from all sources (duplicates may appear)
 - `npm run browse:dedup` - Browse deduplicated events only
 - `npm run search` - Search events by keyword (usage: `npm run search -- "keyword"`)
 - `npm run refetch` - Force re-fetch all sources, ignoring daily cache

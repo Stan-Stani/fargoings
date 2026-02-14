@@ -30,7 +30,7 @@ events.forEach((event, i) => {
   console.log(`   🏷️  ${event.source}`);
   console.log(`   🔗 ${event.url}`);
   if (event.altUrl) {
-    console.log(`   🔗 ${event.altUrl} (${event.altSource})`);
+    console.log(`   🔗 ${event.altUrl}`);
   }
   console.log('');
 });

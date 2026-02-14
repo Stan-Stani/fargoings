@@ -1,4 +1,5 @@
 import { EventDatabase } from './db/database';
+import { findMatches } from './dedup/matcher';
 import { FargoFetcher } from './fetchers/fargomoorhead-com';
 import { FargoUndergroundFetcher } from './fetchers/fargounderground-com';
 import { DowntownFargoFetcher } from './fetchers/downtownfargo-com';
@@ -54,6 +55,35 @@ async function main() {
     }
     db.setSourceLastUpdatedDate('downtownfargo.com', today);
     console.log(`✓ Stored ${downtownEvents.length} events\n`);
+
+    // Rebuild dedup matches across all source pairs
+    console.log('🔍 Rebuilding duplicate matches...');
+    const fargoStored = db.getEventsBySource('fargomoorhead.org');
+    const undergroundStored = db.getEventsBySource('fargounderground.com');
+    const downtownStored = db.getEventsBySource('downtownfargo.com');
+
+    const allMatches = [
+      ...findMatches(fargoStored, undergroundStored, 0.65),
+      ...findMatches(fargoStored, downtownStored, 0.65),
+      ...findMatches(downtownStored, undergroundStored, 0.65),
+    ];
+
+    db.clearMatches();
+    const byConfidence = { high: 0, medium: 0, low: 0 };
+    for (const match of allMatches) {
+      db.insertMatch({
+        eventId1: match.eventId1,
+        eventId2: match.eventId2,
+        score: match.totalScore,
+        confidence: match.confidence,
+        reasons: match.reasons,
+        matchType: 'auto',
+      });
+      byConfidence[match.confidence]++;
+    }
+    console.log(
+      `✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`,
+    );
 
     console.log(`📊 Total: ${db.getTotalCount()} events`);
     console.log('✅ Re-fetch complete!');

@@ -334,15 +334,15 @@ export class EventDatabase {
       .all() as StoredEvent[]
 
     // Build result with alt URLs for matched events
-    const matchMap = new Map<string, string>()
+    const matchMap = new Map<string, { url: string; source: string }>()
     const matches = this.getMatches("medium")
     for (const match of matches) {
       // eventId2 is fargounderground, eventId1 is fargomoorhead
       const event1 = this.db
-        .prepare("SELECT url FROM events WHERE eventId = ?")
-        .get(match.eventId1) as { url: string } | undefined
+        .prepare("SELECT url, source FROM events WHERE eventId = ?")
+        .get(match.eventId1) as { url: string; source: string } | undefined
       if (event1) {
-        matchMap.set(match.eventId2, event1.url)
+        matchMap.set(match.eventId2, { url: event1.url, source: event1.source })
       }
     }
 
@@ -352,11 +352,11 @@ export class EventDatabase {
         continue // Skip duplicates from secondary source
       }
 
-      const altUrl = matchMap.get(event.eventId)
+      const alt = matchMap.get(event.eventId)
       result.push({
         ...event,
-        altUrl,
-        altSource: altUrl ? "fargomoorhead.org" : undefined,
+        altUrl: alt?.url,
+        altSource: alt?.source,
       })
     }
 

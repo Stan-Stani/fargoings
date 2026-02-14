@@ -1,4 +1,5 @@
 import { EventDatabase } from './db/database';
+import { decodeHtmlEntities } from './dedup/normalize';
 
 const db = new EventDatabase();
 const args = process.argv.slice(2);
@@ -8,6 +9,7 @@ const offset = parseInt(args[1]) || 0;
 const events = db.getEvents(limit, offset);
 
 console.log(`\nShowing ${events.length} events (offset: ${offset}):\n`);
+console.log('ℹ️  This is the raw event list (duplicates may appear). Use "npm run browse:dedup" for merged results.\n');
 console.log('─'.repeat(80));
 
 events.forEach((event, i) => {
@@ -20,8 +22,11 @@ events.forEach((event, i) => {
       })()
     : '';
 
-  console.log(`${offset + i + 1}. ${event.title}`);
-  console.log(`   📍 ${event.location || 'TBD'}`);
+  const title = decodeHtmlEntities(event.title);
+  const location = event.location ? decodeHtmlEntities(event.location) : 'TBD';
+
+  console.log(`${offset + i + 1}. ${title}`);
+  console.log(`   📍 ${location}`);
   console.log(`   📆 ${date} ${time}`);
   console.log(`   🏷️  ${event.source}`);
   console.log(`   🔗 ${event.url}`);

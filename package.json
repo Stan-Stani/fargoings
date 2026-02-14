@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.ts",
-    "browse": "tsx src/browse.ts",
+    "browse": "tsx src/browse-dedup.ts",
+    "browse:raw": "tsx src/browse.ts",
     "browse:dedup": "tsx src/browse-dedup.ts",
     "dedup": "tsx src/dedup.ts",
     "search": "tsx src/search.ts",
