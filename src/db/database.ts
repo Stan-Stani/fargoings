@@ -71,6 +71,67 @@ export class EventDatabase {
     `)
   }
 
+  private normalizeDate(date: string): string {
+    if (!date) {
+      return date
+    }
+
+    const ymdMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (ymdMatch) {
+      return date
+    }
+
+    const parsed = new Date(date)
+    if (Number.isNaN(parsed.getTime())) {
+      return date
+    }
+
+    const year = parsed.getFullYear()
+    const month = String(parsed.getMonth() + 1).padStart(2, "0")
+    const day = String(parsed.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  private normalizeTime(startTime: string | null): string | null {
+    if (!startTime) {
+      return null
+    }
+
+    const normalized = startTime.trim()
+
+    const hmsMatch = normalized.match(/^(\d{2}):(\d{2}):(\d{2})$/)
+    if (hmsMatch) {
+      return normalized
+    }
+
+    const hmMatch = normalized.match(/^(\d{1,2}):(\d{2})$/)
+    if (hmMatch) {
+      const hours = Number(hmMatch[1])
+      const minutes = Number(hmMatch[2])
+      if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`
+      }
+    }
+
+    const ampmMatch = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+    if (ampmMatch) {
+      let hours = Number(ampmMatch[1])
+      const minutes = Number(ampmMatch[2])
+      const period = ampmMatch[3].toUpperCase()
+
+      if (hours >= 1 && hours <= 12 && minutes >= 0 && minutes <= 59) {
+        if (period === "AM") {
+          hours = hours % 12
+        } else {
+          hours = (hours % 12) + 12
+        }
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`
+      }
+    }
+
+    return startTime
+  }
+
   insertEvent(
     event: Omit<StoredEvent, "id" | "createdAt" | "updatedAt">,
   ): void {
@@ -93,13 +154,21 @@ export class EventDatabase {
         updatedAt = CURRENT_TIMESTAMP
     `)
 
-    stmt.run(event)
+    const normalizedEvent = {
+      ...event,
+      date: this.normalizeDate(event.date),
+      startTime: this.normalizeTime(event.startTime),
+      startDate: this.normalizeDate(event.startDate),
+      endDate: this.normalizeDate(event.endDate),
+    }
+
+    stmt.run(normalizedEvent)
   }
 
   getEvents(limit: number = 100, offset: number = 0): StoredEvent[] {
     const stmt = this.db.prepare(`
       SELECT * FROM events
-      ORDER BY date ASC
+      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
       LIMIT ? OFFSET ?
     `)
     return stmt.all(limit, offset) as StoredEvent[]
