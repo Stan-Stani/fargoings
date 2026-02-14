@@ -12,6 +12,23 @@ export interface EventMatch {
   createdAt: string
 }
 
+export interface DisplayEvent {
+  id: number
+  eventId: string
+  title: string
+  url: string
+  altUrl: string | null
+  location: string | null
+  date: string
+  startTime: string | null
+  city: string | null
+  imageUrl: string | null
+  categories: string
+  source: string
+  createdAt: string
+  updatedAt: string
+}
+
 export class EventDatabase {
   private db: Database.Database
 
@@ -68,6 +85,26 @@ export class EventDatabase {
         lastUpdatedDate TEXT NOT NULL,
         updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS display_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventId TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        altUrl TEXT,
+        location TEXT,
+        date TEXT NOT NULL,
+        startTime TEXT,
+        city TEXT,
+        imageUrl TEXT,
+        categories TEXT,
+        source TEXT NOT NULL,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_display_events_date ON display_events(date);
+      CREATE INDEX IF NOT EXISTS idx_display_events_source ON display_events(source);
     `)
   }
 
@@ -328,7 +365,7 @@ export class EventDatabase {
     const allEvents = this.db
       .prepare(
         `
-      SELECT * FROM events ORDER BY date ASC, startTime ASC
+      SELECT * FROM events ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
     `,
       )
       .all() as StoredEvent[]
@@ -373,6 +410,54 @@ export class EventDatabase {
       .get() as { count: number }
 
     return this.getTotalCount() - matchedCount.count
+  }
+
+  rebuildDisplayEvents(): number {
+    const deduplicatedEvents = this.getDeduplicatedEvents(this.getTotalCount(), 0)
+
+    const deleteStmt = this.db.prepare("DELETE FROM display_events")
+    const insertStmt = this.db.prepare(`
+      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source)
+      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source)
+    `)
+
+    const transaction = this.db.transaction(() => {
+      deleteStmt.run()
+      for (const event of deduplicatedEvents) {
+        insertStmt.run({
+          eventId: event.eventId,
+          title: event.title,
+          url: event.url,
+          altUrl: event.altUrl || null,
+          location: event.location,
+          date: event.date,
+          startTime: event.startTime,
+          city: event.city,
+          imageUrl: event.imageUrl,
+          categories: event.categories,
+          source: event.source,
+        })
+      }
+    })
+
+    transaction()
+    return deduplicatedEvents.length
+  }
+
+  getDisplayEvents(limit: number = 100, offset: number = 0): DisplayEvent[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM display_events
+      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
+      LIMIT ? OFFSET ?
+    `)
+    return stmt.all(limit, offset) as DisplayEvent[]
+  }
+
+  getDisplayCount(): number {
+    const result = this.db
+      .prepare("SELECT COUNT(*) as count FROM display_events")
+      .get() as { count: number }
+    return result.count
   }
 
   close() {

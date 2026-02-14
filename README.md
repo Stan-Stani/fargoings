@@ -33,6 +33,7 @@ npm start
 - `npm run browse` - Browse deduplicated events (default view)
 - `npm run browse:raw` - Browse raw events from all sources (duplicates may appear)
 - `npm run browse:dedup` - Browse deduplicated events only
+- `npm run browse:display` - Browse rows from `display_events` (web-facing deduped table)
 - `npm run search` - Search events by keyword (usage: `npm run search -- "keyword"`)
 - `npm run refetch` - Force re-fetch all sources, ignoring daily cache
 - `npm run dedup` - Run deduplication on existing events
@@ -63,6 +64,12 @@ Matches (duplicates) are tracked separately with:
 - Event IDs from both sources
 - Match score and confidence level
 - Reasons for the match
+
+Display rows (for web/UI) are materialized in `display_events`:
+
+- One row per deduplicated event
+- Canonical URL plus optional alternate URL
+- Rebuilt automatically by `npm start` and `npm run refetch`
 
 ## Event Sources
 

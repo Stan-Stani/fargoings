@@ -136,6 +136,9 @@ async function main() {
       `✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`,
     )
 
+    const displayCount = db.rebuildDisplayEvents()
+    console.log(`✓ Rebuilt display_events (${displayCount} rows)\n`)
+
     // Stats
     const totalCount = db.getTotalCount()
     const dedupedCount = db.getDeduplicatedCount()
@@ -143,6 +146,7 @@ async function main() {
     console.log(`   Total events:  ${totalCount}`)
     console.log(`   After dedup:   ${dedupedCount}`)
     console.log(`   Duplicates:    ${totalCount - dedupedCount}`)
+    console.log(`   Display rows:  ${db.getDisplayCount()}`)
 
     // Show upcoming deduplicated events
     console.log("\n📅 Upcoming Events (next 10, deduplicated):")
