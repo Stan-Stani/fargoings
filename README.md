@@ -1,11 +1,14 @@
 # Fargoings - Fargo Event Aggregator
 
-A Node.js/TypeScript event aggregator that fetches and stores events from Fargo-Moorhead area sources.
+A Node.js/TypeScript event aggregator that fetches and stores events from multiple Fargo-Moorhead area sources, with automatic deduplication.
 
 ## Features
 
-- Fetches events from fargomoorhead.org API
-- **Dynamic token fetching** - Automatically retrieves and caches API tokens (valid for 24 hours)
+- Aggregates events from **3 sources**:
+  - fargomoorhead.org (API with dynamic token)
+  - fargounderground.com (JSON API)
+  - downtownfargo.com (POST API + HTML scraping for locations)
+- **Automatic deduplication** - Identifies duplicate events across sources using title/date/location matching
 - Stores events in SQLite database
 - Prevents duplicates with upsert logic
 - TypeScript for type safety
@@ -24,7 +27,12 @@ npm start
 
 ## Scripts
 
-- `npm start` - Run the event aggregator
+- `npm start` - Fetch events from all sources and deduplicate
+- `npm run browse` - Browse all events in the database
+- `npm run browse:dedup` - Browse deduplicated events only
+- `npm run search` - Search events by keyword (usage: `npm run search -- "keyword"`)
+- `npm run refetch` - Force re-fetch all sources, ignoring cache
+- `npm run dedup` - Run deduplication on existing events
 - `npm run dev` - Run in watch mode
 - `npm run build` - Build TypeScript to JavaScript
 
@@ -33,27 +41,37 @@ npm start
 Events are stored with the following fields:
 - Event ID, title, URL
 - Location, city, coordinates
-- Start/end dates
+- Start/end dates and time
 - Categories
 - Image URL
 - Source
 
-## Adding More Sources
+Matches (duplicates) are tracked separately with:
+- Event IDs from both sources
+- Match score and confidence level
+- Reasons for the match
 
-To add additional event sources:
+## Event Sources
 
-1. Create a new fetcher in `src/fetchers/`
-2. Implement the fetch and transform methods
-3. Update `src/index.ts` to include the new source
+### fargomoorhead.org
+- Uses a JSON API with dynamic token authentication
+- Token auto-refreshes every 23 hours
+- Rich event data including coordinates
 
-## How It Works
+### fargounderground.com
+- Uses JSON API at `/events.json`
+- Good venue and category data
 
-### Dynamic Token Fetching
+### downtownfargo.com
+- Uses POST request to `/events/feed`
+- Location data scraped from individual event pages
+- Caches event details to avoid re-scraping
 
-The Fargo Moorhead API requires a token that expires after 24 hours. Instead of manually managing tokens, this aggregator:
+## Deduplication
 
-1. Automatically fetches a fresh token from `https://www.fargomoorhead.org/plugins/core/get_simple_token/`
-2. Caches the token in memory for 23 hours (with 1 hour buffer)
-3. Automatically refreshes the token when it expires
+The aggregator automatically identifies duplicate events across sources by comparing:
+- Event titles (fuzzy matching)
+- Dates
+- Locations/venues
 
-This means no manual token management is required!
+Matches are classified as high, medium, or low confidence. When browsing deduplicated events, duplicates are merged and alternate source URLs are preserved.
