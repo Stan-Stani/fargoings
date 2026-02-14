@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { EventDatabase } from './db/database';
 import { FargoFetcher } from './fetchers/fargomoorhead-com';
 import { FargoUndergroundFetcher } from './fetchers/fargounderground-com';
+import { findMatches } from './dedup/matcher';
+import { decodeHtmlEntities } from './dedup/normalize';
 
 async function main() {
   console.log('🎉 Fargo Event Aggregator Starting...\n');
@@ -39,14 +41,42 @@ async function main() {
     }
     console.log(`✓ Processed ${undergroundInserted} events\n`);
 
-    const totalCount = db.getTotalCount();
-    console.log(`📊 Database Statistics:`);
-    console.log(`   Total events in database: ${totalCount}`);
+    // Deduplicate events
+    console.log('🔍 Finding duplicate events...');
+    const fargoStored = db.getEventsBySource('fargomoorhead.org');
+    const undergroundStored = db.getEventsBySource('fargounderground.com');
+    const matches = findMatches(fargoStored, undergroundStored, 0.65);
 
-    console.log('\n📅 Upcoming Events (next 10):');
-    const upcomingEvents = db.getEvents(10);
+    db.clearMatches();
+    const byConfidence = { high: 0, medium: 0, low: 0 };
+    for (const match of matches) {
+      db.insertMatch({
+        eventId1: match.eventId1,
+        eventId2: match.eventId2,
+        score: match.totalScore,
+        confidence: match.confidence,
+        reasons: match.reasons,
+        matchType: 'auto',
+      });
+      byConfidence[match.confidence]++;
+    }
+    console.log(`✓ Found ${matches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`);
+
+    // Stats
+    const totalCount = db.getTotalCount();
+    const dedupedCount = db.getDeduplicatedCount();
+    console.log(`📊 Statistics:`);
+    console.log(`   Total events:  ${totalCount}`);
+    console.log(`   After dedup:   ${dedupedCount}`);
+    console.log(`   Duplicates:    ${totalCount - dedupedCount}`);
+
+    // Show upcoming deduplicated events
+    console.log('\n📅 Upcoming Events (next 10, deduplicated):');
+    const upcomingEvents = db.getDeduplicatedEvents(10);
     upcomingEvents.forEach((event, index) => {
-      const eventDate = new Date(event.date).toLocaleDateString();
+      // Format date directly to avoid timezone issues (date is stored as YYYY-MM-DD)
+      const [year, month, day] = event.date.split('-');
+      const eventDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
       let timeStr = '';
       if (event.startTime) {
         const [h, m] = event.startTime.split(':').map(Number);
@@ -54,10 +84,16 @@ async function main() {
         const ampm = h < 12 ? 'AM' : 'PM';
         timeStr = ` at ${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
       }
-      console.log(`   ${index + 1}. ${event.title}`);
-      console.log(`      📍 ${event.location || 'Location TBD'}`);
+      const title = decodeHtmlEntities(event.title);
+      const location = event.location ? decodeHtmlEntities(event.location) : 'Location TBD';
+      console.log(`   ${index + 1}. ${title}`);
+      console.log(`      📍 ${location}`);
       console.log(`      📆 ${eventDate}${timeStr}`);
-      console.log(`      🔗 ${event.url}\n`);
+      console.log(`      🔗 ${event.url}`);
+      if (event.altUrl) {
+        console.log(`      🔗 ${event.altUrl} (alt)`);
+      }
+      console.log('');
     });
 
     console.log('✅ Event aggregation complete!');

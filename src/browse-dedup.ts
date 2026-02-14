@@ -1,13 +1,14 @@
 import { EventDatabase } from './db/database';
+import { decodeHtmlEntities } from './dedup/normalize';
 
 const db = new EventDatabase();
 const args = process.argv.slice(2);
 const limit = parseInt(args[0]) || 50;
 const offset = parseInt(args[1]) || 0;
 
-const events = db.getEvents(limit, offset);
+const events = db.getDeduplicatedEvents(limit, offset);
 
-console.log(`\nShowing ${events.length} events (offset: ${offset}):\n`);
+console.log(`\n🎯 Deduplicated Events (${events.length} shown, offset: ${offset}):\n`);
 console.log('─'.repeat(80));
 
 events.forEach((event, i) => {
@@ -20,16 +21,23 @@ events.forEach((event, i) => {
       })()
     : '';
 
-  console.log(`${offset + i + 1}. ${event.title}`);
-  console.log(`   📍 ${event.location || 'TBD'}`);
+  const title = decodeHtmlEntities(event.title);
+  const location = event.location ? decodeHtmlEntities(event.location) : 'TBD';
+
+  console.log(`${offset + i + 1}. ${title}`);
+  console.log(`   📍 ${location}`);
   console.log(`   📆 ${date} ${time}`);
   console.log(`   🏷️  ${event.source}`);
   console.log(`   🔗 ${event.url}`);
+  if (event.altUrl) {
+    console.log(`   🔗 ${event.altUrl} (${event.altSource})`);
+  }
   console.log('');
 });
 
 console.log('─'.repeat(80));
-console.log(`Total in database: ${db.getTotalCount()}`);
-console.log(`\nUsage: npx tsx src/browse.ts [limit] [offset]`);
+console.log(`Total unique events: ${db.getDeduplicatedCount()}`);
+console.log(`Matches stored: ${db.getMatchCount()}`);
+console.log(`\nUsage: npx tsx src/browse-dedup.ts [limit] [offset]`);
 
 db.close();

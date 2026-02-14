@@ -2,6 +2,17 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { StoredEvent } from '../types/event';
 
+export interface EventMatch {
+  id: number;
+  eventId1: string;
+  eventId2: string;
+  score: number;
+  confidence: string;
+  reasons: string;
+  matchType: string;
+  createdAt: string;
+}
+
 export class EventDatabase {
   private db: Database.Database;
 
@@ -35,6 +46,23 @@ export class EventDatabase {
       CREATE INDEX IF NOT EXISTS idx_events_eventId ON events(eventId);
       CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
       CREATE INDEX IF NOT EXISTS idx_events_source ON events(source);
+
+      CREATE TABLE IF NOT EXISTS event_matches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventId1 TEXT NOT NULL,
+        eventId2 TEXT NOT NULL,
+        score REAL NOT NULL,
+        confidence TEXT NOT NULL,
+        reasons TEXT,
+        matchType TEXT DEFAULT 'auto',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(eventId1, eventId2),
+        FOREIGN KEY (eventId1) REFERENCES events(eventId),
+        FOREIGN KEY (eventId2) REFERENCES events(eventId)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_matches_event1 ON event_matches(eventId1);
+      CREATE INDEX IF NOT EXISTS idx_matches_event2 ON event_matches(eventId2);
     `);
   }
 
@@ -91,6 +119,110 @@ export class EventDatabase {
   getTotalCount(): number {
     const result = this.db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number };
     return result.count;
+  }
+
+  // Match management methods
+
+  insertMatch(match: {
+    eventId1: string;
+    eventId2: string;
+    score: number;
+    confidence: string;
+    reasons: string[];
+    matchType?: string;
+  }): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO event_matches (eventId1, eventId2, score, confidence, reasons, matchType)
+      VALUES (@eventId1, @eventId2, @score, @confidence, @reasons, @matchType)
+      ON CONFLICT(eventId1, eventId2) DO UPDATE SET
+        score = @score,
+        confidence = @confidence,
+        reasons = @reasons,
+        matchType = @matchType
+    `);
+
+    stmt.run({
+      eventId1: match.eventId1,
+      eventId2: match.eventId2,
+      score: match.score,
+      confidence: match.confidence,
+      reasons: JSON.stringify(match.reasons),
+      matchType: match.matchType || 'auto',
+    });
+  }
+
+  clearMatches(): void {
+    this.db.exec('DELETE FROM event_matches');
+  }
+
+  getMatches(minConfidence?: string): EventMatch[] {
+    let sql = 'SELECT * FROM event_matches';
+    if (minConfidence) {
+      const confidenceLevels = ['low', 'medium', 'high'];
+      const minIndex = confidenceLevels.indexOf(minConfidence);
+      const allowed = confidenceLevels.slice(minIndex).map(c => `'${c}'`).join(',');
+      sql += ` WHERE confidence IN (${allowed})`;
+    }
+    sql += ' ORDER BY score DESC';
+    return this.db.prepare(sql).all() as EventMatch[];
+  }
+
+  getMatchCount(): number {
+    const result = this.db.prepare('SELECT COUNT(*) as count FROM event_matches').get() as { count: number };
+    return result.count;
+  }
+
+  /**
+   * Get deduplicated events, preferring fargounderground.com as primary source
+   * (richer data) but including URLs from both sources
+   */
+  getDeduplicatedEvents(limit: number = 100, offset: number = 0): (StoredEvent & { altUrl?: string; altSource?: string })[] {
+    // Get all matched event IDs from fargomoorhead.org (secondary source)
+    const matchedSecondaryIds = this.db.prepare(`
+      SELECT eventId1 FROM event_matches WHERE confidence IN ('high', 'medium')
+    `).all() as { eventId1: string }[];
+
+    const excludeIds = new Set(matchedSecondaryIds.map(r => r.eventId1));
+
+    // Get all events, excluding matched secondary source events
+    const allEvents = this.db.prepare(`
+      SELECT * FROM events ORDER BY date ASC, startTime ASC
+    `).all() as StoredEvent[];
+
+    // Build result with alt URLs for matched events
+    const matchMap = new Map<string, string>();
+    const matches = this.getMatches('medium');
+    for (const match of matches) {
+      // eventId2 is fargounderground, eventId1 is fargomoorhead
+      const event1 = this.db.prepare('SELECT url FROM events WHERE eventId = ?').get(match.eventId1) as { url: string } | undefined;
+      if (event1) {
+        matchMap.set(match.eventId2, event1.url);
+      }
+    }
+
+    const result: (StoredEvent & { altUrl?: string; altSource?: string })[] = [];
+    for (const event of allEvents) {
+      if (excludeIds.has(event.eventId)) {
+        continue; // Skip duplicates from secondary source
+      }
+
+      const altUrl = matchMap.get(event.eventId);
+      result.push({
+        ...event,
+        altUrl,
+        altSource: altUrl ? 'fargomoorhead.org' : undefined,
+      });
+    }
+
+    return result.slice(offset, offset + limit);
+  }
+
+  getDeduplicatedCount(): number {
+    const matchedCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM event_matches WHERE confidence IN ('high', 'medium')
+    `).get() as { count: number };
+
+    return this.getTotalCount() - matchedCount.count;
   }
 
   close() {
