@@ -8,6 +8,8 @@
     "browse": "tsx src/browse.ts",
     "browse:dedup": "tsx src/browse-dedup.ts",
     "dedup": "tsx src/dedup.ts",
+    "search": "tsx src/search.ts",
+    "refetch": "tsx src/refetch.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts"
   },

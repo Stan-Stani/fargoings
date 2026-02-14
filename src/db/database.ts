@@ -116,6 +116,33 @@ export class EventDatabase {
     return stmt.all(source) as StoredEvent[];
   }
 
+  getEventIdsBySource(source: string): Set<string> {
+    const stmt = this.db.prepare(`
+      SELECT eventId FROM events
+      WHERE source = ?
+    `);
+    const rows = stmt.all(source) as { eventId: string }[];
+    return new Set(rows.map(r => r.eventId));
+  }
+
+  deleteEventsBySource(source: string): number {
+    // First get event IDs for this source
+    const eventIds = this.getEventIdsBySource(source);
+
+    // Delete any matches referencing these events
+    const deleteMatchesStmt = this.db.prepare(`
+      DELETE FROM event_matches
+      WHERE eventId1 IN (SELECT eventId FROM events WHERE source = ?)
+         OR eventId2 IN (SELECT eventId FROM events WHERE source = ?)
+    `);
+    deleteMatchesStmt.run(source, source);
+
+    // Then delete the events
+    const stmt = this.db.prepare(`DELETE FROM events WHERE source = ?`);
+    const result = stmt.run(source);
+    return result.changes;
+  }
+
   getTotalCount(): number {
     const result = this.db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number };
     return result.count;

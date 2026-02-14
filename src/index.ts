@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { EventDatabase } from './db/database';
 import { FargoFetcher } from './fetchers/fargomoorhead-com';
 import { FargoUndergroundFetcher } from './fetchers/fargounderground-com';
+import { DowntownFargoFetcher } from './fetchers/downtownfargo-com';
 import { findMatches } from './dedup/matcher';
 import { decodeHtmlEntities } from './dedup/normalize';
 
@@ -11,6 +12,7 @@ async function main() {
   const db = new EventDatabase();
   const fargoFetcher = new FargoFetcher();
   const undergroundFetcher = new FargoUndergroundFetcher();
+  const downtownFetcher = new DowntownFargoFetcher();
 
   try {
     // Fetch from fargomoorhead.org
@@ -41,15 +43,37 @@ async function main() {
     }
     console.log(`✓ Processed ${undergroundInserted} events\n`);
 
-    // Deduplicate events
+    // Fetch from downtownfargo.com (only fetch details for new events)
+    console.log('📥 Fetching events from downtownfargo.com (next 2 weeks)...');
+    const existingDowntownIds = db.getEventIdsBySource('downtownfargo.com');
+    const downtownEvents = await downtownFetcher.fetchEvents(14, existingDowntownIds);
+    console.log(`✓ Fetched ${downtownEvents.length} events\n`);
+
+    console.log('💾 Storing downtownfargo.com events...');
+    let downtownInserted = 0;
+    for (const event of downtownEvents) {
+      const storedEvent = downtownFetcher.transformToStoredEvent(event);
+      db.insertEvent(storedEvent);
+      downtownInserted++;
+    }
+    console.log(`✓ Processed ${downtownInserted} events\n`);
+
+    // Deduplicate events across all sources
     console.log('🔍 Finding duplicate events...');
     const fargoStored = db.getEventsBySource('fargomoorhead.org');
     const undergroundStored = db.getEventsBySource('fargounderground.com');
-    const matches = findMatches(fargoStored, undergroundStored, 0.65);
+    const downtownStored = db.getEventsBySource('downtownfargo.com');
+
+    // Find matches between all source pairs
+    const allMatches = [
+      ...findMatches(fargoStored, undergroundStored, 0.65),
+      ...findMatches(fargoStored, downtownStored, 0.65),
+      ...findMatches(downtownStored, undergroundStored, 0.65),
+    ];
 
     db.clearMatches();
     const byConfidence = { high: 0, medium: 0, low: 0 };
-    for (const match of matches) {
+    for (const match of allMatches) {
       db.insertMatch({
         eventId1: match.eventId1,
         eventId2: match.eventId2,
@@ -60,7 +84,7 @@ async function main() {
       });
       byConfidence[match.confidence]++;
     }
-    console.log(`✓ Found ${matches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`);
+    console.log(`✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`);
 
     // Stats
     const totalCount = db.getTotalCount();
