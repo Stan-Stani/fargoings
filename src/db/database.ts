@@ -29,6 +29,11 @@ export interface DisplayEvent {
   updatedAt: string
 }
 
+export interface DisplayEventQueryResult {
+  rows: DisplayEvent[]
+  total: number
+}
+
 export class EventDatabase {
   private db: Database.Database
 
@@ -413,7 +418,10 @@ export class EventDatabase {
   }
 
   rebuildDisplayEvents(): number {
-    const deduplicatedEvents = this.getDeduplicatedEvents(this.getTotalCount(), 0)
+    const deduplicatedEvents = this.getDeduplicatedEvents(
+      this.getTotalCount(),
+      0,
+    )
 
     const deleteStmt = this.db.prepare("DELETE FROM display_events")
     const insertStmt = this.db.prepare(`
@@ -458,6 +466,62 @@ export class EventDatabase {
       .prepare("SELECT COUNT(*) as count FROM display_events")
       .get() as { count: number }
     return result.count
+  }
+
+  queryDisplayEvents(
+    searchQuery: string,
+    limit: number,
+    offset: number,
+  ): DisplayEventQueryResult {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+
+    if (!normalizedQuery) {
+      const rows = this.getDisplayEvents(limit, offset)
+      return {
+        rows,
+        total: this.getDisplayCount(),
+      }
+    }
+
+    const likeParam = `%${normalizedQuery}%`
+
+    const whereClause = `
+      WHERE lower(title) LIKE ?
+         OR lower(coalesce(location, '')) LIKE ?
+         OR lower(coalesce(city, '')) LIKE ?
+         OR lower(coalesce(source, '')) LIKE ?
+    `
+
+    const rows = this.db
+      .prepare(
+        `
+      SELECT * FROM display_events
+      ${whereClause}
+      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
+      LIMIT ? OFFSET ?
+    `,
+      )
+      .all(
+        likeParam,
+        likeParam,
+        likeParam,
+        likeParam,
+        limit,
+        offset,
+      ) as DisplayEvent[]
+
+    const total = (
+      this.db
+        .prepare(
+          `
+      SELECT COUNT(*) as count FROM display_events
+      ${whereClause}
+    `,
+        )
+        .get(likeParam, likeParam, likeParam, likeParam) as { count: number }
+    ).count
+
+    return { rows, total }
   }
 
   close() {
