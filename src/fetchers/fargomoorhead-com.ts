@@ -5,8 +5,64 @@ export class FargoFetcher {
     "https://www.fargomoorhead.org/includes/rest_v2/plugins_events_events_by_date/find/"
   private readonly tokenUrl =
     "https://www.fargomoorhead.org/plugins/core/get_simple_token/"
+  private readonly browserHeaders = {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+    Referer: "https://www.fargomoorhead.org/events/",
+    Origin: "https://www.fargomoorhead.org",
+    "User-Agent":
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  }
   private cachedToken: string | null = null
   private tokenExpiresAt: number = 0
+
+  private async fetchWithRetry(
+    url: string,
+    init: RequestInit,
+    label: string,
+    maxAttempts: number = 3,
+  ): Promise<Response> {
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(url, init)
+        if (response.ok) {
+          return response
+        }
+
+        const bodyPreview = (await response.text()).slice(0, 500)
+        const shouldRetry = response.status >= 500 || response.status === 429
+
+        if (!shouldRetry || attempt === maxAttempts) {
+          throw new Error(
+            `${label} failed: HTTP ${response.status}. Body preview: ${bodyPreview}`,
+          )
+        }
+
+        console.warn(
+          `⚠️ ${label} attempt ${attempt}/${maxAttempts} failed with ${response.status}; retrying...`,
+        )
+      } catch (error) {
+        lastError = error
+        if (attempt === maxAttempts) {
+          throw error
+        }
+        console.warn(
+          `⚠️ ${label} attempt ${attempt}/${maxAttempts} errored; retrying...`,
+          error,
+        )
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, attempt * 750))
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`${label} failed after retries`)
+  }
 
   /**
    * Fetches a fresh API token from the Fargo Moorhead website.
@@ -21,12 +77,23 @@ export class FargoFetcher {
     }
 
     try {
-      const response = await fetch(this.tokenUrl)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch token: ${response.status}`)
+      const response = await this.fetchWithRetry(
+        this.tokenUrl,
+        {
+          headers: {
+            ...this.browserHeaders,
+            Accept: "text/plain,*/*",
+          },
+        },
+        "Token fetch",
+      )
+
+      const token = (await response.text()).trim()
+      if (!token) {
+        throw new Error("Token fetch returned empty token")
       }
 
-      this.cachedToken = await response.text()
+      this.cachedToken = token
       // Token is valid for 24 hours based on s-maxage header
       this.tokenExpiresAt = now + 86400000 // 24 hours in milliseconds
 
@@ -128,10 +195,11 @@ export class FargoFetcher {
     const url = `${this.baseUrl}?json=${encodeURIComponent(JSON.stringify(filter))}&token=${token}`
 
     try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      const response = await this.fetchWithRetry(
+        url,
+        { headers: this.browserHeaders },
+        "Events fetch",
+      )
       const data = (await response.json()) as FargoAPIResponse
       return data.docs.docs
     } catch (error) {
