@@ -4,6 +4,18 @@ import { EventDatabase } from "./db/database"
 import { decodeHtmlEntities } from "./dedup/normalize"
 
 const PORT = Number(process.env.PORT || 8787)
+const BASE_PATH = normalizeBasePath(process.env.BASE_PATH || "")
+
+function normalizeBasePath(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === "/") {
+    return ""
+  }
+
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+  const withoutTrailingSlash = withLeadingSlash.replace(/\/+$/, "")
+  return withoutTrailingSlash === "/" ? "" : withoutTrailingSlash
+}
 
 function toPositiveInt(value: string | null, fallback: number): number {
   if (!value) {
@@ -30,7 +42,9 @@ function sendHtml(res: { writeHead: Function; end: Function }, html: string) {
   res.end(html)
 }
 
-function renderPage(): string {
+function renderPage(basePath: string): string {
+  const apiPath = `${basePath || ""}/api/events`
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -81,6 +95,7 @@ function renderPage(): string {
     </div>
 
     <script>
+      const apiPath = ${JSON.stringify(apiPath)};
       const pageSize = 50;
       let page = 1;
       let query = "";
@@ -152,7 +167,7 @@ function renderPage(): string {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (query) params.set('q', query);
 
-        const response = await fetch('/api/events?' + params.toString());
+        const response = await fetch(apiPath + '?' + params.toString());
         const data = await response.json();
 
         totalPages = data.totalPages || 1;
@@ -215,13 +230,21 @@ async function main() {
     }
 
     const requestUrl = new URL(req.url, `http://localhost:${PORT}`)
+    const pathname = requestUrl.pathname
+    const appPath = BASE_PATH
+      ? pathname === BASE_PATH
+        ? "/"
+        : pathname.startsWith(`${BASE_PATH}/`)
+          ? pathname.slice(BASE_PATH.length)
+          : pathname
+      : pathname
 
-    if (requestUrl.pathname === "/health") {
+    if (appPath === "/health" || pathname === "/health") {
       sendJson(res, 200, { ok: true })
       return
     }
 
-    if (requestUrl.pathname === "/api/events") {
+    if (appPath === "/api/events") {
       const query = requestUrl.searchParams.get("q") || ""
       const page = toPositiveInt(requestUrl.searchParams.get("page"), 1)
       const pageSize = Math.min(
@@ -247,12 +270,12 @@ async function main() {
       return
     }
 
-    if (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html") {
-      sendHtml(res, renderPage())
+    if (appPath === "/" || appPath === "/index.html") {
+      sendHtml(res, renderPage(BASE_PATH))
       return
     }
 
-    if (requestUrl.pathname === "/favicon.ico") {
+    if (appPath === "/favicon.ico" || pathname === "/favicon.ico") {
       res.writeHead(204)
       res.end()
       return
@@ -262,8 +285,11 @@ async function main() {
   })
 
   server.listen(PORT, () => {
-    console.log(`🌐 Web app running at http://localhost:${PORT}`)
-    console.log(`📡 API endpoint: http://localhost:${PORT}/api/events`)
+    const publicBase = BASE_PATH || "/"
+    const publicApi = `${BASE_PATH || ""}/api/events`
+
+    console.log(`🌐 Web app running at http://localhost:${PORT}${publicBase}`)
+    console.log(`📡 API endpoint: http://localhost:${PORT}${publicApi}`)
   })
 
   const shutdown = () => {
