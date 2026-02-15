@@ -3,8 +3,14 @@ import {
   FargoUndergroundEvent,
   StoredEvent,
 } from "../types/event"
+import {
+  DEFAULT_BROWSER_HEADERS,
+  fetchWithRetry,
+  getDateRangeInTimeZone,
+} from "./shared"
 
 export class FargoUndergroundFetcher {
+  private readonly clientTimeZone = "America/Chicago"
   private readonly baseUrl =
     "https://fargounderground.com/wp-json/tribe/events/v1/events"
 
@@ -12,16 +18,10 @@ export class FargoUndergroundFetcher {
     perPage: number = 100,
     daysAhead: number = 14,
   ): Promise<FargoUndergroundEvent[]> {
-    const startDate = new Date()
-    startDate.setHours(0, 0, 0, 0)
-    const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + daysAhead)
-
-    const startDateStr = startDate.toISOString().split("T")[0]
-    const endDateStr = endDate.toISOString().split("T")[0]
+    const dateRange = getDateRangeInTimeZone(daysAhead, this.clientTimeZone)
 
     console.log(
-      `   Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`,
+      `   Date range (${this.clientTimeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
     )
 
     const allEvents: FargoUndergroundEvent[] = []
@@ -29,13 +29,14 @@ export class FargoUndergroundFetcher {
     let hasMore = true
 
     while (hasMore) {
-      const url = `${this.baseUrl}?per_page=${perPage}&page=${page}&start_date=${startDateStr}&end_date=${endDateStr}`
+      const url = `${this.baseUrl}?per_page=${perPage}&page=${page}&start_date=${dateRange.startDateStr}&end_date=${dateRange.endDateStr}`
 
       try {
-        const response = await fetch(url)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
+        const response = await fetchWithRetry(
+          url,
+          { headers: DEFAULT_BROWSER_HEADERS },
+          `Fargo Underground events fetch (page ${page})`,
+        )
 
         const data = (await response.json()) as FargoUndergroundAPIResponse
         allEvents.push(...data.events)

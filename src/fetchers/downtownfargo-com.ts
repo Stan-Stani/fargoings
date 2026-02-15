@@ -1,4 +1,9 @@
 import { StoredEvent } from "../types/event"
+import {
+  DEFAULT_BROWSER_HEADERS,
+  fetchWithRetry,
+  getDateRangeInTimeZone,
+} from "./shared"
 
 interface DowntownFargoEvent {
   className: string | null
@@ -14,43 +19,35 @@ interface DowntownFargoEventWithDetails extends DowntownFargoEvent {
 }
 
 export class DowntownFargoFetcher {
+  private readonly clientTimeZone = "America/Chicago"
   private readonly feedUrl = "https://www.downtownfargo.com/events/feed"
   private readonly baseUrl = "https://www.downtownfargo.com"
 
   async fetchEvents(daysAhead: number = 14): Promise<DowntownFargoEventWithDetails[]> {
-    const startDate = new Date()
-    startDate.setHours(0, 0, 0, 0)
-    const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + daysAhead)
-
-    const startStr = startDate.toISOString().split("T")[0]
-    const endStr = endDate.toISOString().split("T")[0]
+    const dateRange = getDateRangeInTimeZone(daysAhead, this.clientTimeZone)
 
     console.log(
-      `   Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`,
+      `   Date range (${this.clientTimeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
     )
 
     const body = new URLSearchParams({
       searchText: "",
       category: "",
-      start: startStr,
-      end: endStr,
+      start: dateRange.startDateStr,
+      end: dateRange.endDateStr,
     })
 
     try {
-      const response = await fetch(this.feedUrl, {
+      const response = await fetchWithRetry(this.feedUrl, {
         method: "POST",
         headers: {
+          ...DEFAULT_BROWSER_HEADERS,
           "Content-Type": "application/x-www-form-urlencoded",
           "X-Requested-With": "XMLHttpRequest",
           Accept: "application/json",
         },
         body: body.toString(),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      }, "Downtown Fargo events fetch")
 
       const events = (await response.json()) as DowntownFargoEvent[]
 
@@ -77,7 +74,14 @@ export class DowntownFargoFetcher {
     eventPath: string,
   ): Promise<string | undefined> {
     try {
-      const response = await fetch(`${this.baseUrl}${eventPath}`)
+      const response = await fetchWithRetry(
+        `${this.baseUrl}${eventPath}`,
+        {
+          headers: DEFAULT_BROWSER_HEADERS,
+        },
+        "Downtown Fargo event details fetch",
+        2,
+      )
       if (!response.ok) return undefined
 
       const html = await response.text()
