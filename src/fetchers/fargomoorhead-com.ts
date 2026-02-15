@@ -1,6 +1,7 @@
 import { FargoAPIResponse, FargoEvent, StoredEvent } from "../types/event"
 
 export class FargoFetcher {
+  private readonly clientTimeZone = "America/Chicago"
   private readonly baseUrl =
     "https://www.fargomoorhead.org/includes/rest_v2/plugins_events_events_by_date/find/"
   private readonly tokenUrl =
@@ -111,14 +112,14 @@ export class FargoFetcher {
   ): Promise<FargoEvent[]> {
     const token = await this.getToken()
 
-    // Calculate dynamic date range: today to N days ahead
-    const startDate = new Date()
-    startDate.setHours(0, 0, 0, 0)
-    const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + daysAhead)
+    // Calculate date range at midnight in Fargo's timezone, not server timezone
+    const startYmd = this.getDatePartsInTimeZone(new Date(), this.clientTimeZone)
+    const endYmd = this.addDaysToYmd(startYmd, daysAhead)
+    const startIso = this.toTimeZoneMidnightIso(startYmd, this.clientTimeZone)
+    const endIso = this.toTimeZoneMidnightIso(endYmd, this.clientTimeZone)
 
     console.log(
-      `   Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`,
+      `   Date range (${this.clientTimeZone}): ${startYmd.month}/${startYmd.day}/${startYmd.year} to ${endYmd.month}/${endYmd.day}/${endYmd.year}`,
     )
 
     const filter = {
@@ -150,8 +151,8 @@ export class FargoFetcher {
           },
         ],
         date_range: {
-          start: { $date: startDate.toISOString() },
-          end: { $date: endDate.toISOString() },
+          start: { $date: startIso },
+          end: { $date: endIso },
         },
       },
       options: {
@@ -206,6 +207,81 @@ export class FargoFetcher {
       console.error("Error fetching Fargo events:", error)
       throw error
     }
+  }
+
+  private getDatePartsInTimeZone(
+    date: Date,
+    timeZone: string,
+  ): { year: number; month: number; day: number } {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    const parts = formatter.formatToParts(date)
+
+    const year = Number(parts.find((part) => part.type === "year")?.value)
+    const month = Number(parts.find((part) => part.type === "month")?.value)
+    const day = Number(parts.find((part) => part.type === "day")?.value)
+
+    if (!year || !month || !day) {
+      throw new Error(`Failed to parse date parts for timezone ${timeZone}`)
+    }
+
+    return { year, month, day }
+  }
+
+  private addDaysToYmd(
+    ymd: { year: number; month: number; day: number },
+    days: number,
+  ): { year: number; month: number; day: number } {
+    const date = new Date(Date.UTC(ymd.year, ymd.month - 1, ymd.day + days))
+    return {
+      year: date.getUTCFullYear(),
+      month: date.getUTCMonth() + 1,
+      day: date.getUTCDate(),
+    }
+  }
+
+  private toTimeZoneMidnightIso(
+    ymd: { year: number; month: number; day: number },
+    timeZone: string,
+  ): string {
+    const utcMidnightMillis = Date.UTC(ymd.year, ymd.month - 1, ymd.day, 0, 0, 0)
+    const offsetMinutes = this.getTimeZoneOffsetMinutes(
+      new Date(utcMidnightMillis),
+      timeZone,
+    )
+    const zonedMidnightUtcMillis = utcMidnightMillis - offsetMinutes * 60_000
+    return new Date(zonedMidnightUtcMillis).toISOString()
+  }
+
+  private getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "shortOffset",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+
+    const tzName =
+      formatter
+        .formatToParts(date)
+        .find((part) => part.type === "timeZoneName")
+        ?.value ?? ""
+    const match = tzName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/)
+
+    if (!match) {
+      throw new Error(`Unsupported timezone offset format: ${tzName}`)
+    }
+
+    const sign = match[1] === "+" ? 1 : -1
+    const hours = Number(match[2])
+    const minutes = Number(match[3] || "0")
+    return sign * (hours * 60 + minutes)
   }
 
   private toDateOnly(isoString: string): string {
