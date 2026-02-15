@@ -204,7 +204,7 @@
         prevBtn.disabled = data.page <= 1
         nextBtn.disabled = data.page >= totalPages
 
-        window.scrollTo({ top: 0 })
+        document.querySelector('h1').scrollIntoView()
       }
 
       prevBtn.addEventListener("click", () => {
