@@ -72,7 +72,10 @@ export function getDateRangeInTimeZone(
 
 export function toTimeZoneMidnightIso(ymd: Ymd, timeZone: string): string {
   const utcMidnightMillis = Date.UTC(ymd.year, ymd.month - 1, ymd.day, 0, 0, 0)
-  const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcMidnightMillis), timeZone)
+  const offsetMinutes = getTimeZoneOffsetMinutes(
+    new Date(utcMidnightMillis),
+    timeZone,
+  )
   const zonedMidnightUtcMillis = utcMidnightMillis - offsetMinutes * 60_000
   return new Date(zonedMidnightUtcMillis).toISOString()
 }
@@ -88,9 +91,7 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   })
 
   const tzName =
-    formatter
-      .formatToParts(date)
-      .find((part) => part.type === "timeZoneName")
+    formatter.formatToParts(date).find((part) => part.type === "timeZoneName")
       ?.value ?? ""
   const match = tzName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/)
 

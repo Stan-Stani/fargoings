@@ -1,3 +1,4 @@
+import "dotenv/config"
 import { createServer } from "http"
 import { URL } from "url"
 import { EventDatabase } from "./db/database"

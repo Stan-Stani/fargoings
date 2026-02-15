@@ -23,7 +23,9 @@ export class DowntownFargoFetcher {
   private readonly feedUrl = "https://www.downtownfargo.com/events/feed"
   private readonly baseUrl = "https://www.downtownfargo.com"
 
-  async fetchEvents(daysAhead: number = 14): Promise<DowntownFargoEventWithDetails[]> {
+  async fetchEvents(
+    daysAhead: number = 14,
+  ): Promise<DowntownFargoEventWithDetails[]> {
     const dateRange = getDateRangeInTimeZone(daysAhead, this.clientTimeZone)
 
     console.log(
@@ -38,16 +40,20 @@ export class DowntownFargoFetcher {
     })
 
     try {
-      const response = await fetchWithRetry(this.feedUrl, {
-        method: "POST",
-        headers: {
-          ...DEFAULT_BROWSER_HEADERS,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "X-Requested-With": "XMLHttpRequest",
-          Accept: "application/json",
+      const response = await fetchWithRetry(
+        this.feedUrl,
+        {
+          method: "POST",
+          headers: {
+            ...DEFAULT_BROWSER_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json",
+          },
+          body: body.toString(),
         },
-        body: body.toString(),
-      }, "Downtown Fargo events fetch")
+        "Downtown Fargo events fetch",
+      )
 
       const events = (await response.json()) as DowntownFargoEvent[]
 
@@ -56,7 +62,9 @@ export class DowntownFargoFetcher {
       const eventsWithDetails: DowntownFargoEventWithDetails[] = []
 
       if (events.length > 0) {
-        console.log(`   Fetching location details for ${events.length} events...`)
+        console.log(
+          `   Fetching location details for ${events.length} events...`,
+        )
       }
       for (const event of events) {
         const location = await this.fetchEventLocation(event.url)
