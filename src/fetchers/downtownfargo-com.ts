@@ -119,18 +119,14 @@ export class DowntownFargoFetcher {
   transformToStoredEvent(
     event: DowntownFargoEventWithDetails,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
-    // Parse start datetime (format: "2026-02-14T10:00:00-06:00")
-    const startDateTime = new Date(event.start)
-    const date = `${startDateTime.getFullYear()}-${String(startDateTime.getMonth() + 1).padStart(2, "0")}-${String(startDateTime.getDate()).padStart(2, "0")}`
+    // Preserve source-local wall clock values from ISO-like strings to avoid VPS timezone shifts.
+    const startDatePart = event.start.split("T")[0]
+    const startTimePart = event.start.split("T")[1]?.slice(0, 8) || null
+    const endDatePart = event.end.split("T")[0]
 
-    // Extract time as HH:MM:SS
-    const hours = String(startDateTime.getHours()).padStart(2, "0")
-    const minutes = String(startDateTime.getMinutes()).padStart(2, "0")
-    const startTime = `${hours}:${minutes}:00`
-
-    // Parse end date
-    const endDateTime = new Date(event.end)
-    const endDate = `${endDateTime.getFullYear()}-${String(endDateTime.getMonth() + 1).padStart(2, "0")}-${String(endDateTime.getDate()).padStart(2, "0")}`
+    const date = startDatePart
+    const startTime = startTimePart
+    const endDate = endDatePart
 
     return {
       eventId: `dtf_${event.url.replace("/events/", "")}`,

@@ -158,13 +158,22 @@ export class FargoFetcher {
   }
 
   private toDateOnly(isoString: string): string {
-    // API returns UTC timestamps like "2026-02-15T05:59:59.000Z"
-    // which is actually Feb 14 11:59 PM Central Time
-    // Parse and extract local date, not UTC date
-    const date = new Date(isoString)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    const day = String(date.getDate()).padStart(2, "0")
+    // Always normalize to Fargo local date so VPS/server timezone does not shift dates.
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: this.clientTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    const parts = formatter.formatToParts(new Date(isoString))
+    const year = parts.find((part) => part.type === "year")?.value
+    const month = parts.find((part) => part.type === "month")?.value
+    const day = parts.find((part) => part.type === "day")?.value
+
+    if (!year || !month || !day) {
+      throw new Error(`Invalid date from API: ${isoString}`)
+    }
+
     return `${year}-${month}-${day}`
   }
 
