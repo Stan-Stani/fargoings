@@ -36,6 +36,7 @@ export interface DisplayEventQueryResult {
 
 export class EventDatabase {
   private db: Database.Database
+  private readonly displayTimeZone = "America/Chicago"
 
   constructor(dbPath: string = "./events.db") {
     this.db = new Database(dbPath)
@@ -172,6 +173,26 @@ export class EventDatabase {
     }
 
     return startTime
+  }
+
+  private getCurrentDateInTimeZone(timeZone: string): string {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+
+    const parts = formatter.formatToParts(new Date())
+    const year = parts.find((part) => part.type === "year")?.value
+    const month = parts.find((part) => part.type === "month")?.value
+    const day = parts.find((part) => part.type === "day")?.value
+
+    if (!year || !month || !day) {
+      throw new Error(`Unable to compute current date for timezone ${timeZone}`)
+    }
+
+    return `${year}-${month}-${day}`
   }
 
   insertEvent(
@@ -453,18 +474,21 @@ export class EventDatabase {
   }
 
   getDisplayEvents(limit: number = 100, offset: number = 0): DisplayEvent[] {
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
     const stmt = this.db.prepare(`
       SELECT * FROM display_events
+      WHERE date >= ?
       ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
       LIMIT ? OFFSET ?
     `)
-    return stmt.all(limit, offset) as DisplayEvent[]
+    return stmt.all(todayInFargo, limit, offset) as DisplayEvent[]
   }
 
   getDisplayCount(): number {
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
     const result = this.db
-      .prepare("SELECT COUNT(*) as count FROM display_events")
-      .get() as { count: number }
+      .prepare("SELECT COUNT(*) as count FROM display_events WHERE date >= ?")
+      .get(todayInFargo) as { count: number }
     return result.count
   }
 
@@ -486,11 +510,16 @@ export class EventDatabase {
     const likeParam = `%${normalizedQuery}%`
 
     const whereClause = `
-      WHERE lower(title) LIKE ?
+      WHERE date >= ?
+        AND (
+             lower(title) LIKE ?
          OR lower(coalesce(location, '')) LIKE ?
          OR lower(coalesce(city, '')) LIKE ?
          OR lower(coalesce(source, '')) LIKE ?
+        )
     `
+
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
 
     const rows = this.db
       .prepare(
@@ -502,6 +531,7 @@ export class EventDatabase {
     `,
       )
       .all(
+        todayInFargo,
         likeParam,
         likeParam,
         likeParam,
@@ -518,7 +548,13 @@ export class EventDatabase {
       ${whereClause}
     `,
         )
-        .get(likeParam, likeParam, likeParam, likeParam) as { count: number }
+        .get(
+          todayInFargo,
+          likeParam,
+          likeParam,
+          likeParam,
+          likeParam,
+        ) as { count: number }
     ).count
 
     return { rows, total }
