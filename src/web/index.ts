@@ -1,7 +1,7 @@
 import "dotenv/config"
-import { readFileSync } from "fs"
+import { existsSync, readFileSync } from "fs"
 import { createServer } from "http"
-import { join } from "path"
+import { join, resolve } from "path"
 import { URL } from "url"
 import { EventDatabase } from "../db/database"
 import { decodeHtmlEntities } from "../dedup/normalize"
@@ -45,6 +45,17 @@ function sendHtml(res: { writeHead: Function; end: Function }, html: string) {
   res.end(html)
 }
 
+function getContentType(filePath: string): string {
+  if (filePath.endsWith(".svg")) return "image/svg+xml"
+  if (filePath.endsWith(".png")) return "image/png"
+  if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg"))
+    return "image/jpeg"
+  if (filePath.endsWith(".webp")) return "image/webp"
+  if (filePath.endsWith(".gif")) return "image/gif"
+  if (filePath.endsWith(".ico")) return "image/x-icon"
+  return "application/octet-stream"
+}
+
 function loadPageTemplate(): string {
   const templatePath = join(__dirname, "page.html")
   return readFileSync(templatePath, "utf8")
@@ -54,6 +65,8 @@ function renderPage(pageTemplate: string, basePath: string): string {
   const apiPath = `${basePath || ""}/api/events`
   return pageTemplate.replace("__API_PATH__", JSON.stringify(apiPath))
 }
+
+const PUBLIC_ROOT = resolve(__dirname, "public")
 
 async function main() {
   const db = new EventDatabase()
@@ -108,6 +121,25 @@ async function main() {
 
     if (appPath === "/" || appPath === "/index.html") {
       sendHtml(res, renderPage(pageTemplate, BASE_PATH))
+      return
+    }
+
+    if (appPath.startsWith("/public/")) {
+      const relativePublicPath = appPath.slice("/public/".length)
+      const publicFilePath = resolve(PUBLIC_ROOT, relativePublicPath)
+
+      if (
+        !publicFilePath.startsWith(PUBLIC_ROOT) ||
+        !existsSync(publicFilePath)
+      ) {
+        sendJson(res, 404, { error: "Not found" })
+        return
+      }
+
+      const contentType = getContentType(publicFilePath)
+      const body = readFileSync(publicFilePath)
+      res.writeHead(200, { "Content-Type": contentType })
+      res.end(body)
       return
     }
 

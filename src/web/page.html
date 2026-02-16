@@ -20,10 +20,26 @@
       .container {
         max-width: 1200px;
         margin: 0 auto;
+        position: relative;
       }
       h1 {
         margin: 0 0 16px;
         line-height: 1.2;
+      }
+      .top-link {
+        margin: -6px 0 14px;
+        position: absolute;
+        top: 10px;
+        right: 0;
+      }
+      .top-link a {
+        display: inline-flex;
+        align-items: center;
+      }
+      .top-link img {
+        width: 28px;
+        height: 28px;
+        display: block;
       }
       .toolbar {
         display: flex;
@@ -122,6 +138,17 @@
   <body>
     <div class="container">
       <h1>Fargoings | Goings-On in Fargo</h1>
+      <div class="top-link muted">
+        <a
+          href="https://github.com/Stan-Stani/fargoings"
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="GitHub repository"
+          ><img
+            src="./public/assets/GitHub_Invertocat_Black_Clearspace.svg"
+            alt="GitHub"
+        /></a>
+      </div>
       <div class="toolbar">
         <input id="search" placeholder="Search title, location, city, source" />
         <button id="searchBtn">Search</button>
