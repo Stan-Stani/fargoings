@@ -13,15 +13,21 @@
           Roboto,
           Arial,
           sans-serif;
-        margin: 24px;
+        margin: 16px;
         color: #111827;
         background: #f9fafb;
       }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
       h1 {
         margin: 0 0 16px;
+        line-height: 1.2;
       }
       .toolbar {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 16px;
       }
@@ -30,6 +36,8 @@
         border: 1px solid #d1d5db;
         border-radius: 8px;
         width: 320px;
+        max-width: 100%;
+        flex: 1 1 240px;
       }
       button {
         padding: 8px 12px;
@@ -46,8 +54,13 @@
         margin-bottom: 12px;
         color: #4b5563;
       }
+      .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
       table {
         width: 100%;
+        min-width: 720px;
         border-collapse: collapse;
         background: #fff;
         border: 1px solid #e5e7eb;
@@ -72,43 +85,68 @@
       .links a {
         display: block;
         margin-bottom: 4px;
+        overflow-wrap: anywhere;
       }
       .pagination {
         margin-top: 14px;
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
       }
       .muted {
         color: #6b7280;
         font-size: 13px;
       }
+      @media (max-width: 640px) {
+        body {
+          margin: 12px;
+        }
+        h1 {
+          font-size: 1.35rem;
+          margin-bottom: 12px;
+        }
+        .toolbar {
+          gap: 6px;
+        }
+        input,
+        button {
+          width: 100%;
+        }
+        .meta {
+          font-size: 14px;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>Fargoings | Goings-On in Fargo</h1>
-    <div class="toolbar">
-      <input id="search" placeholder="Search title, location, city, source" />
-      <button id="searchBtn">Search</button>
-      <button id="clearBtn">Clear</button>
-    </div>
-    <div id="meta" class="meta">Loading…</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Title</th>
-          <th>Date</th>
-          <th>Location</th>
-          <th>Source</th>
-          <th>Links</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div class="pagination">
-      <button id="prevBtn">Prev</button>
-      <button id="nextBtn">Next</button>
-      <span id="pageInfo" class="muted"></span>
+    <div class="container">
+      <h1>Fargoings | Goings-On in Fargo</h1>
+      <div class="toolbar">
+        <input id="search" placeholder="Search title, location, city, source" />
+        <button id="searchBtn">Search</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+      <div id="meta" class="meta">Loading…</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Date</th>
+              <th>Location</th>
+              <th>Source</th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button id="prevBtn">Prev</button>
+        <button id="nextBtn">Next</button>
+        <span id="pageInfo" class="muted"></span>
+      </div>
     </div>
 
     <script>
@@ -204,7 +242,7 @@
         prevBtn.disabled = data.page <= 1
         nextBtn.disabled = data.page >= totalPages
 
-        document.querySelector('h1').scrollIntoView()
+        document.querySelector("h1").scrollIntoView()
       }
 
       prevBtn.addEventListener("click", () => {
