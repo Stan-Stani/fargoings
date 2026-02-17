@@ -1,0 +1,29 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd fargoings
+          git pull origin main
+          
+          # Stop existing Node process
+          pkill -f "npm run web" || true
+          # OR if you know the specific node process:
+          # pkill -f "node.*fargoings" || true
+          
+          # Install dependencies and start
+          npm install
+          nohup npm run web > output.log 2>&1 &
