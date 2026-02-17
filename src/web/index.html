@@ -5,6 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fargoings | Goings-On in Fargo</title>
     <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f9fafb;
+        --text: #111827;
+        --muted: #6b7280;
+        --meta: #4b5563;
+        --surface: #ffffff;
+        --surface-soft: #f9fafb;
+        --surface-accent: #f3f4f6;
+        --border: #d1d5db;
+        --border-soft: #e5e7eb;
+        --row-border: #f3f4f6;
+        --scroll-thumb: #9ca3af;
+        --scroll-thumb-hover: #6b7280;
+        --scroll-track: #f3f4f6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111827;
+          --text: #f3f4f6;
+          --muted: #9ca3af;
+          --meta: #d1d5db;
+          --surface: #1f2937;
+          --surface-soft: #1f2937;
+          --surface-accent: #374151;
+          --border: #4b5563;
+          --border-soft: #374151;
+          --row-border: #374151;
+          --scroll-thumb: #6b7280;
+          --scroll-thumb-hover: #9ca3af;
+          --scroll-track: #1f2937;
+        }
+      }
+      :root[data-theme="light"] {
+        --bg: #f9fafb;
+        --text: #111827;
+        --muted: #6b7280;
+        --meta: #4b5563;
+        --surface: #ffffff;
+        --surface-soft: #f9fafb;
+        --surface-accent: #f3f4f6;
+        --border: #d1d5db;
+        --border-soft: #e5e7eb;
+        --row-border: #f3f4f6;
+        --scroll-thumb: #9ca3af;
+        --scroll-thumb-hover: #6b7280;
+        --scroll-track: #f3f4f6;
+      }
+      :root[data-theme="dark"] {
+        --bg: #111827;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --meta: #d1d5db;
+        --surface: #1f2937;
+        --surface-soft: #1f2937;
+        --surface-accent: #374151;
+        --border: #4b5563;
+        --border-soft: #374151;
+        --row-border: #374151;
+        --scroll-thumb: #6b7280;
+        --scroll-thumb-hover: #9ca3af;
+        --scroll-track: #1f2937;
+      }
       body {
         font-family:
           system-ui,
@@ -14,8 +77,8 @@
           Arial,
           sans-serif;
         margin: 16px;
-        color: #111827;
-        background: #f9fafb;
+        color: var(--text);
+        background: var(--bg);
       }
       .container {
         max-width: 1200px;
@@ -36,10 +99,10 @@
         display: inline-block;
         margin: 0;
         padding: 2px 8px;
-        border: 1px solid #d1d5db;
+        border: 1px solid var(--border);
         border-radius: 999px;
-        background: #fff;
-        color: #6b7280;
+        background: var(--surface);
+        color: var(--muted);
         font-size: 12px;
       }
       .top-link {
@@ -63,6 +126,27 @@
         filter: invert(34%) sepia(93%) saturate(1738%) hue-rotate(209deg)
           brightness(95%) contrast(93%);
       }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .top-link img {
+          filter: invert(95%) sepia(6%) saturate(241%) hue-rotate(188deg)
+            brightness(108%) contrast(93%);
+        }
+        :root:not([data-theme="light"]) .top-link a:hover img {
+          filter: invert(56%) sepia(80%) saturate(1358%) hue-rotate(197deg)
+            brightness(102%) contrast(93%);
+        }
+      }
+      :root[data-theme="light"] .top-link img {
+        filter: none;
+      }
+      :root[data-theme="dark"] .top-link img {
+        filter: invert(95%) sepia(6%) saturate(241%) hue-rotate(188deg)
+          brightness(108%) contrast(93%);
+      }
+      :root[data-theme="dark"] .top-link a:hover img {
+        filter: invert(56%) sepia(80%) saturate(1358%) hue-rotate(197deg)
+          brightness(102%) contrast(93%);
+      }
       .toolbar {
         display: flex;
         flex-wrap: wrap;
@@ -71,18 +155,34 @@
       }
       input {
         padding: 8px 10px;
-        border: 1px solid #d1d5db;
+        border: 1px solid var(--border);
         border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
         width: 320px;
         max-width: 100%;
         flex: 1 1 240px;
       }
       button {
         padding: 8px 12px;
-        border: 1px solid #d1d5db;
+        border: 1px solid var(--border);
         border-radius: 8px;
-        background: #fff;
+        background: var(--surface);
+        color: var(--text);
         cursor: pointer;
+      }
+      .theme-toggle {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .theme-toggle svg {
+        width: 16px;
+        height: 16px;
       }
       button:disabled {
         opacity: 0.5;
@@ -90,31 +190,31 @@
       }
       .meta {
         margin-bottom: 12px;
-        color: #4b5563;
+        color: var(--meta);
       }
       .table-wrap {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         max-height: 72vh;
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--border-soft);
         border-radius: 10px;
-        background: #fff;
+        background: var(--surface);
         scrollbar-width: thin;
-        scrollbar-color: #9ca3af #f3f4f6;
+        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
       }
       .table-wrap::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       .table-wrap::-webkit-scrollbar-track {
-        background: #f3f4f6;
+        background: var(--scroll-track);
       }
       .table-wrap::-webkit-scrollbar-thumb {
-        background: #9ca3af;
+        background: var(--scroll-thumb);
         border-radius: 999px;
       }
       .table-wrap::-webkit-scrollbar-thumb:hover {
-        background: #6b7280;
+        background: var(--scroll-thumb-hover);
       }
       table {
         width: 100%;
@@ -126,24 +226,24 @@
       th,
       td {
         padding: 10px 12px;
-        border-bottom: 1px solid #f3f4f6;
+        border-bottom: 1px solid var(--row-border);
         text-align: left;
         vertical-align: top;
         font-size: 14px;
       }
       th {
-        background: #f9fafb;
+        background: var(--surface-soft);
         font-weight: 600;
       }
       tr:last-child td {
         border-bottom: none;
       }
       .day-marker td {
-        background: #f3f4f6;
-        color: #374151;
+        background: var(--surface-accent);
+        color: var(--text);
         font-weight: 600;
-        border-top: 1px solid #e5e7eb;
-        border-bottom: 1px solid #e5e7eb;
+        border-top: 1px solid var(--border-soft);
+        border-bottom: 1px solid var(--border-soft);
         position: sticky;
         top: 0;
         z-index: 2;
@@ -161,7 +261,7 @@
         flex-wrap: wrap;
       }
       .muted {
-        color: #6b7280;
+        color: var(--muted);
         font-size: 13px;
       }
       @media (max-width: 640px) {
@@ -196,6 +296,11 @@
         .top-link img {
           width: 22px;
           height: 22px;
+        }
+        .theme-toggle {
+          width: 28px;
+          height: 28px;
+          min-width: 28px;
         }
         .version-badge {
           margin: 0;
@@ -249,6 +354,14 @@
       <div class="header-row">
         <h1>Fargoings | Goings-On in Fargo</h1>
         <div class="top-link muted">
+          <button
+            id="themeToggle"
+            class="theme-toggle"
+            type="button"
+            aria-label="Toggle color theme"
+          >
+            Auto
+          </button>
           <a
             href="https://github.com/Stan-Stani/fargoings"
             target="_blank"

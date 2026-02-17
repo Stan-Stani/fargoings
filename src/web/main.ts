@@ -1,3 +1,10 @@
+import {
+  createElement,
+  Moon,
+  Sun,
+  SunMoon,
+} from "lucide"
+
 type EventItem = {
   title: string
   date: string
@@ -16,6 +23,8 @@ type EventsResponse = {
   totalPages: number
 }
 
+type ThemePreference = "auto" | "light" | "dark"
+
 declare const __APP_VERSION__: string
 
 const apiPath = "/api/events"
@@ -33,9 +42,75 @@ const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
 const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
-const tableWrapEl = document.querySelector(".table-wrap") as HTMLDivElement | null
+const tableWrapEl = document.querySelector(
+  ".table-wrap",
+) as HTMLDivElement | null
+const themeToggleBtn = document.getElementById(
+  "themeToggle",
+) as HTMLButtonElement
+const themeStorageKey = "themePreference"
+
+function getStoredThemePreference(): ThemePreference {
+  const stored = localStorage.getItem(themeStorageKey)
+  if (stored === "light" || stored === "dark" || stored === "auto") {
+    return stored
+  }
+  return "auto"
+}
+
+function applyThemePreference(preference: ThemePreference): void {
+  const root = document.documentElement
+  if (preference === "auto") {
+    root.removeAttribute("data-theme")
+  } else {
+    root.setAttribute("data-theme", preference)
+  }
+}
+
+function setThemeToggleLabel(preference: ThemePreference): void {
+  const icon = preference === "auto" ? SunMoon : preference === "dark" ? Moon : Sun
+  const label =
+    preference === "auto"
+      ? "Theme: Auto (system)"
+      : preference === "dark"
+        ? "Theme: Dark"
+        : "Theme: Light"
+
+  themeToggleBtn.replaceChildren(
+    createElement(icon, {
+      width: 16,
+      height: 16,
+      "aria-hidden": "true",
+      focusable: "false",
+    }),
+  )
+
+  themeToggleBtn.setAttribute("aria-label", label)
+  themeToggleBtn.title = label
+}
+
+function setThemePreference(preference: ThemePreference): void {
+  localStorage.setItem(themeStorageKey, preference)
+  applyThemePreference(preference)
+  setThemeToggleLabel(preference)
+}
+
+function cycleThemePreference(current: ThemePreference): ThemePreference {
+  if (current === "auto") return "dark"
+  if (current === "dark") return "light"
+  return "auto"
+}
 
 versionBadgeEl.textContent = `v${__APP_VERSION__}`
+
+let themePreference = getStoredThemePreference()
+applyThemePreference(themePreference)
+setThemeToggleLabel(themePreference)
+
+themeToggleBtn.addEventListener("click", () => {
+  themePreference = cycleThemePreference(themePreference)
+  setThemePreference(themePreference)
+})
 
 function formatDate(date: string, time: string | null): string {
   const [year, month, day] = date.split("-")
