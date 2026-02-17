@@ -9,7 +9,7 @@
     "browse:raw": "tsx src/browse.ts",
     "browse:dedup": "tsx src/browse-dedup.ts",
     "browse:display": "tsx src/browse-display.ts",
-    "web": "tsx src/web/index.ts",
+    "web": "concurrently -k \"tsx src/web/api.ts\" \"vite\"",
     "web:dev": "concurrently -k \"tsx watch src/web/api.ts\" \"vite\"",
     "dedup": "tsx src/dedup.ts",
     "search": "tsx src/search.ts",
