@@ -20,15 +20,21 @@
       .container {
         max-width: 1200px;
         margin: 0 auto;
-        position: relative;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
       }
       h1 {
-        margin: 0 0 16px;
+        margin: 0;
         line-height: 1.2;
       }
       .version-badge {
         display: inline-block;
-        margin: -4px 0 12px;
+        margin: 0;
         padding: 2px 8px;
         border: 1px solid #d1d5db;
         border-radius: 999px;
@@ -37,13 +43,11 @@
         font-size: 12px;
       }
       .top-link {
-        margin: -4px 0 12px;
-        position: absolute;
-        top: 10px;
-        right: 0;
+        margin: 0;
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        flex-shrink: 0;
       }
       .top-link a {
         display: inline-flex;
@@ -53,6 +57,11 @@
         width: 28px;
         height: 28px;
         display: block;
+        transition: filter 120ms ease;
+      }
+      .top-link a:hover img {
+        filter: invert(34%) sepia(93%) saturate(1738%) hue-rotate(209deg)
+          brightness(95%) contrast(93%);
       }
       .toolbar {
         display: flex;
@@ -140,44 +149,105 @@
         font-size: 13px;
       }
       @media (max-width: 640px) {
+        html,
+        body {
+          height: 100%;
+          overflow: hidden;
+        }
         body {
           margin: 12px;
         }
-        h1 {
-          font-size: 1.35rem;
-          margin-bottom: 12px;
+        .container {
+          height: calc(100dvh - 24px);
+          display: flex;
+          flex-direction: column;
         }
-        .toolbar {
+        .header-row {
+          flex-wrap: wrap;
+          align-items: flex-start;
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+        h1 {
+          font-size: 1.2rem;
+          margin: 0;
+        }
+        .top-link {
+          margin: 0;
+          justify-content: flex-start;
           gap: 6px;
         }
-        input,
-        button {
+        .top-link img {
+          width: 22px;
+          height: 22px;
+        }
+        .version-badge {
+          margin: 0;
+          padding: 1px 6px;
+          font-size: 11px;
+        }
+        .toolbar {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 5px;
+          margin-bottom: 8px;
+        }
+        .toolbar input {
+          grid-column: 1 / -1;
           width: 100%;
+          padding: 7px 9px;
+        }
+        .toolbar button {
+          width: 100%;
+          padding: 7px 9px;
         }
         .meta {
-          font-size: 14px;
+          font-size: 13px;
+          margin-bottom: 8px;
+        }
+        .table-wrap {
+          flex: 1;
+          min-height: 0;
+          max-height: none;
+        }
+        .pagination {
+          margin-top: 8px;
+          flex-shrink: 0;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+          align-items: center;
+        }
+        .pagination button {
+          width: 100%;
+          padding: 7px 9px;
+        }
+        .pagination #pageInfo {
+          grid-column: 1 / -1;
         }
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Fargoings | Goings-On in Fargo</h1>
-      <div class="top-link muted">
-        <a
-          href="https://github.com/Stan-Stani/fargoings"
-          target="_blank"
-          rel="noreferrer noopener"
-          aria-label="GitHub repository"
-          ><img
-            src="/assets/GitHub_Invertocat_Black_Clearspace.svg"
-            alt="GitHub"
-        /></a>
-        <div
-          id="versionBadge"
-          class="version-badge"
-          aria-label="App version"
-        ></div>
+      <div class="header-row">
+        <h1>Fargoings | Goings-On in Fargo</h1>
+        <div class="top-link muted">
+          <a
+            href="https://github.com/Stan-Stani/fargoings"
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="GitHub repository"
+            ><img
+              src="/assets/GitHub_Invertocat_Black_Clearspace.svg"
+              alt="GitHub"
+          /></a>
+          <div
+            id="versionBadge"
+            class="version-badge"
+            aria-label="App version"
+          ></div>
+        </div>
       </div>
       <div class="toolbar">
         <input id="search" placeholder="Search title, location, city, source" />
