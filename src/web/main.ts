@@ -118,13 +118,25 @@ themeToggleBtn.addEventListener("click", () => {
 })
 
 function formatDate(date: string, time: string | null): string {
-  const [year, month, day] = date.split("-")
-  const md = Number(month) + "/" + Number(day) + "/" + year
-  if (!time) return md
+  const [year, month, day] = date.split("-").map(Number)
+  const localDate = new Date(year, month - 1, day)
+  const dayOfWeek = localDate.toLocaleDateString(undefined, {
+    weekday: "short",
+  })
+  const md = month + "/" + day + "/" + year
+  if (!time) return `${dayOfWeek}, ${md}`
   const [h, m] = time.split(":").map(Number)
   const hour = h % 12 || 12
   const ampm = h < 12 ? "AM" : "PM"
-  return md + " " + hour + ":" + String(m).padStart(2, "0") + " " + ampm
+  return (
+    `${dayOfWeek}, ${md}` +
+    " " +
+    hour +
+    ":" +
+    String(m).padStart(2, "0") +
+    " " +
+    ampm
+  )
 }
 
 function formatDayLabel(date: string): string {
@@ -191,7 +203,10 @@ function createSourceIconLink(url: string): HTMLAnchorElement {
   sourceIconLink.target = "_blank"
   sourceIconLink.rel = "noreferrer noopener"
   sourceIconLink.title = formatSourceHostLabel(getHostFromUrl(url))
-  sourceIconLink.setAttribute("aria-label", `Open source: ${sourceIconLink.title}`)
+  sourceIconLink.setAttribute(
+    "aria-label",
+    `Open source: ${sourceIconLink.title}`,
+  )
 
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
