@@ -33,6 +33,7 @@ const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
 const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
+const tableWrapEl = document.querySelector(".table-wrap") as HTMLDivElement | null
 
 versionBadgeEl.textContent = `v${__APP_VERSION__}`
 
@@ -139,7 +140,7 @@ async function load(): Promise<void> {
   prevBtn.disabled = data.page <= 1
   nextBtn.disabled = data.page >= totalPages
 
-  document.querySelector("h1")?.scrollIntoView()
+  tableWrapEl?.scrollTo({ top: 0, left: 0, behavior: "auto" })
 }
 
 prevBtn.addEventListener("click", () => {
