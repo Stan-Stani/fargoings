@@ -19,7 +19,9 @@ jobs:
             cd /root/fargoings
             git fetch origin
             git reset --hard origin/main
-            npm install
+            npm ci
+            npm run web:build
             screen -S fargoings -X quit 2>/dev/null || true
-            cd /root/fargoings && screen -dmS fargoings npm run web
+            screen -S fargoings-api -X quit 2>/dev/null || true
+            cd /root/fargoings && screen -dmS fargoings npm run web:prod
             exit 0
