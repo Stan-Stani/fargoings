@@ -17,5 +17,6 @@ jobs:
           cd /root/fargoings
           git pull origin main
           npm install
-          screen -S fargoings -X quit 2>/dev/null; screen -dmS fargoings npm run web
+          screen -S fargoings -X quit 2>/dev/null || true
+          cd /root/fargoings && screen -dmS fargoings npm run web
           exit 0
