@@ -1,5 +1,5 @@
-import { defineConfig } from "vite"
 import { readFileSync } from "node:fs"
+import { defineConfig } from "vite"
 
 const apiPort = Number(process.env.API_PORT || 8788)
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {

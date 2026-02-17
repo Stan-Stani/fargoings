@@ -1,4 +1,4 @@
-name: Auto Bump Minor Version
+name: Auto Bump Patch Version
 
 on:
   push:
@@ -23,8 +23,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Bump minor version
-        run: npm version minor --no-git-tag-version
+      - name: Bump patch version
+        run: npm version patch --no-git-tag-version
 
       - name: Commit and push version bump
         run: |
@@ -38,5 +38,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(release): bump minor version [skip ci]"
+          git commit -m "chore(release): bump patch version [skip ci]"
           git push
