@@ -38,5 +38,6 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(release): bump patch version [skip ci]"
+          VERSION=$(node -p "require('./package.json').version")
+          git commit -m "chore(release): bump to v${VERSION} [skip ci]"
           git push
