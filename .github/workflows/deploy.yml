@@ -17,8 +17,8 @@ jobs:
           cd fargoings
           git pull origin main
           
-          # Stop existing Node process (guaranteed to succeed)
-          pkill -f "npm run web" || echo "No existing process found"
+          # Stop existing fargoings processes
+          pkill -f "fargoings.*tsx" || echo "No existing process found"
           
           # Give it a moment to die gracefully
           sleep 2
@@ -29,7 +29,7 @@ jobs:
           
           # Verify it started
           sleep 2
-          if pgrep -f "npm run web" > /dev/null; then
+          if pgrep -f "fargoings.*tsx" > /dev/null; then
             echo "✅ Server started successfully"
             exit 0
           else
