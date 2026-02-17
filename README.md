@@ -95,7 +95,7 @@ npm run web:dev
 
 API query params:
 
-- `q` (optional): search text across title/location/city/source
+- `q` (optional): search text across title/location/city/category/source
 - `page` (optional, default `1`)
 - `pageSize` (optional, default `25`, max `100`)
 

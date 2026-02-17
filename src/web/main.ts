@@ -1,15 +1,11 @@
-import {
-  createElement,
-  Moon,
-  Sun,
-  SunMoon,
-} from "lucide"
+import { createElement, Moon, Sun, SunMoon } from "lucide"
 
 type EventItem = {
   title: string
   date: string
   startTime: string | null
   location: string | null
+  categories: string | null
   source: string
   url: string
   altUrl: string | null
@@ -68,7 +64,8 @@ function applyThemePreference(preference: ThemePreference): void {
 }
 
 function setThemeToggleLabel(preference: ThemePreference): void {
-  const icon = preference === "auto" ? SunMoon : preference === "dark" ? Moon : Sun
+  const icon =
+    preference === "auto" ? SunMoon : preference === "dark" ? Moon : Sun
   const label =
     preference === "auto"
       ? "Theme: Auto (system)"
@@ -133,6 +130,10 @@ function formatDayLabel(date: string): string {
   })
 }
 
+function formatCategory(categoriesRaw: string | null): string {
+  return categoriesRaw || "N/A"
+}
+
 function renderRows(items: EventItem[]): void {
   rowsEl.innerHTML = ""
   let lastDate = ""
@@ -143,7 +144,7 @@ function renderRows(items: EventItem[]): void {
       dayMarkerRow.className = "day-marker"
 
       const dayMarkerCell = document.createElement("td")
-      dayMarkerCell.colSpan = 5
+      dayMarkerCell.colSpan = 6
       dayMarkerCell.textContent = formatDayLabel(item.date)
 
       dayMarkerRow.appendChild(dayMarkerCell)
@@ -161,6 +162,9 @@ function renderRows(items: EventItem[]): void {
 
     const locationTd = document.createElement("td")
     locationTd.textContent = item.location || "N/A"
+
+    const categoryTd = document.createElement("td")
+    categoryTd.textContent = formatCategory(item.categories)
 
     const sourceTd = document.createElement("td")
     sourceTd.textContent = item.source
@@ -185,6 +189,7 @@ function renderRows(items: EventItem[]): void {
     tr.appendChild(titleTd)
     tr.appendChild(dateTd)
     tr.appendChild(locationTd)
+    tr.appendChild(categoryTd)
     tr.appendChild(sourceTd)
     tr.appendChild(linksTd)
     rowsEl.appendChild(tr)

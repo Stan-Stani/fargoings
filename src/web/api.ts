@@ -26,6 +26,40 @@ function sendJson(
   res.end(JSON.stringify(payload))
 }
 
+function extractCategory(categoriesRaw: string | null): string | null {
+  if (!categoriesRaw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(categoriesRaw) as unknown
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const first = parsed[0]
+
+      if (typeof first === "string") {
+        return decodeHtmlEntities(first)
+      }
+
+      if (first && typeof first === "object") {
+        const record = first as Record<string, unknown>
+
+        if (typeof record.catName === "string") {
+          return decodeHtmlEntities(record.catName)
+        }
+
+        if (typeof record.name === "string") {
+          return decodeHtmlEntities(record.name)
+        }
+      }
+    }
+  } catch {
+    return decodeHtmlEntities(categoriesRaw)
+  }
+
+  return null
+}
+
 async function main() {
   const db = new EventDatabase()
 
@@ -60,6 +94,7 @@ async function main() {
           ...row,
           title: decodeHtmlEntities(row.title),
           location: row.location ? decodeHtmlEntities(row.location) : null,
+          categories: extractCategory(row.categories),
         })),
         total: result.total,
         page,

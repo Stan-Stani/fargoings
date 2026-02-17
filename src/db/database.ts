@@ -515,6 +515,7 @@ export class EventDatabase {
              lower(title) LIKE ?
          OR lower(coalesce(location, '')) LIKE ?
          OR lower(coalesce(city, '')) LIKE ?
+         OR lower(coalesce(categories, '')) LIKE ?
          OR lower(coalesce(source, '')) LIKE ?
         )
     `
@@ -536,6 +537,7 @@ export class EventDatabase {
         likeParam,
         likeParam,
         likeParam,
+        likeParam,
         limit,
         offset,
       ) as DisplayEvent[]
@@ -550,6 +552,7 @@ export class EventDatabase {
         )
         .get(
           todayInFargo,
+          likeParam,
           likeParam,
           likeParam,
           likeParam,

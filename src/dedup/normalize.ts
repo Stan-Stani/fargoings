@@ -1,32 +1,10 @@
 /**
  * Text normalization utilities for event matching
  */
-
-// Common HTML entities to decode
-const HTML_ENTITIES: Record<string, string> = {
-  '&#8211;': '–',  // en-dash
-  '&#8212;': '—',  // em-dash
-  '&#8220;': '"',  // left double quote
-  '&#8221;': '"',  // right double quote
-  '&#8216;': "'",  // left single quote
-  '&#8217;': "'",  // right single quote
-  '&#038;': '&',
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&apos;': "'",
-  '&nbsp;': ' ',
-};
+import { decode } from "he";
 
 export function decodeHtmlEntities(text: string): string {
-  let result = text;
-  for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
-    result = result.split(entity).join(char);
-  }
-  // Handle numeric entities like &#123;
-  result = result.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
-  return result;
+  return decode(text);
 }
 
 export function normalizeText(text: string): string {
