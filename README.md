@@ -35,7 +35,7 @@ npm start
 - `npm run browse:dedup` - Browse deduplicated events only
 - `npm run browse:display` - Browse rows from `display_events` (web-facing deduped table)
 - `npm run web` - Start minimal webpage + API on `http://localhost:8787`
-- `npm run web:dev` - Start webpage + API in watch mode
+- `npm run web:dev` - Start Vite live-reload frontend on `http://localhost:8787` + API on `http://localhost:8788`
 - `npm run search` - Search events by keyword (usage: `npm run search -- "keyword"`)
 - `npm run refetch` - Force re-fetch all sources, ignoring daily cache
 - `npm run dedup` - Run deduplication on existing events
@@ -83,6 +83,15 @@ npm run web
 
 - Webpage: `http://localhost:8787`
 - API: `http://localhost:8787/api/events`
+
+For live reload during development:
+
+```bash
+npm run web:dev
+```
+
+- Frontend (Vite): `http://localhost:8787`
+- API (proxied by Vite): `http://localhost:8788/api/events`
 
 API query params:
 

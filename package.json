@@ -10,7 +10,7 @@
     "browse:dedup": "tsx src/browse-dedup.ts",
     "browse:display": "tsx src/browse-display.ts",
     "web": "tsx src/web/index.ts",
-    "web:dev": "tsx watch src/web/index.ts",
+    "web:dev": "concurrently -k \"tsx watch src/web/api.ts\" \"vite\"",
     "dedup": "tsx src/dedup.ts",
     "search": "tsx src/search.ts",
     "refetch": "tsx src/refetch.ts",
@@ -22,8 +22,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^25.2.3",
+    "concurrently": "^9.2.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.1.5"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
