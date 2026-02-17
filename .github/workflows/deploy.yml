@@ -7,26 +7,33 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Deploy via SSH
+    - name: Stop old server
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VPS_HOST }}
         username: ${{ secrets.VPS_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          # Kill the fargoings screen session if it exists
-          screen -S fargoings -X quit 2>/dev/null || echo "No existing screen session"
+          screen -S fargoings -X quit 2>/dev/null || true
+          pkill -f "fargoings.*tsx" || true
           
-          # Double-check processes are stopped
-          pkill -f "fargoings.*tsx" || echo "No existing process"
-          sleep 2
-          
+    - name: Update code
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
           cd /root/fargoings
           git pull origin main
           npm install
           
-          # Start new screen session
-          screen -dmS fargoings bash -c 'cd /root/fargoings && npm run web > output.log 2>&1'
-          
-          sleep 2
-          echo "✅ Deployment complete"
+    - name: Start server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /root/fargoings
+          screen -dmS fargoings npm run web
