@@ -285,10 +285,37 @@
         top: 0;
         z-index: 2;
       }
-      .links a {
-        display: block;
-        margin-bottom: 4px;
-        overflow-wrap: anywhere;
+      .source-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px 2px 6px;
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        background: var(--surface-soft);
+        color: var(--text);
+        text-decoration: none;
+        max-width: 100%;
+      }
+      .source-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .source-chip:hover {
+        background: var(--surface-accent);
+      }
+      .source-favicon {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+      }
+      .source-chip span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .pagination {
         margin-top: 14px;
@@ -439,7 +466,6 @@
               <th>Location</th>
               <th id="categorySortHeader">Category</th>
               <th>Source</th>
-              <th>Links</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>

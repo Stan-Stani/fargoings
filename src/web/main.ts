@@ -139,6 +139,44 @@ function formatCategory(categoriesRaw: string | null): string {
   return categoriesRaw || "N/A"
 }
 
+function getHostFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+function formatSourceHostLabel(host: string): string {
+  return host.replace(/^www\./i, "")
+}
+
+function createSourceChip(url: string, label: string): HTMLAnchorElement {
+  const sourceChip = document.createElement("a")
+  sourceChip.className = "source-chip"
+  sourceChip.href = url
+  sourceChip.target = "_blank"
+  sourceChip.rel = "noreferrer noopener"
+  sourceChip.title = url
+
+  const sourceHost = getHostFromUrl(url)
+  const sourceFavicon = document.createElement("img")
+  sourceFavicon.className = "source-favicon"
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(sourceHost)}`
+  sourceFavicon.alt = ""
+  sourceFavicon.loading = "lazy"
+  sourceFavicon.decoding = "async"
+  sourceFavicon.setAttribute("aria-hidden", "true")
+
+  const sourceLabel = document.createElement("span")
+  sourceLabel.textContent = label
+
+  sourceChip.appendChild(sourceFavicon)
+  sourceChip.appendChild(sourceLabel)
+
+  return sourceChip
+}
+
 function updateCategorySortHeader(): void {
   if (sortByCategoryWithinDay) {
     categorySortHeaderEl.textContent = "Category (A→Z)"
@@ -207,7 +245,7 @@ function renderRows(items: EventItem[]): void {
       dayMarkerRow.className = "day-marker"
 
       const dayMarkerCell = document.createElement("td")
-      dayMarkerCell.colSpan = 6
+      dayMarkerCell.colSpan = 5
       dayMarkerCell.textContent = formatDayLabel(item.date)
 
       dayMarkerRow.appendChild(dayMarkerCell)
@@ -230,31 +268,23 @@ function renderRows(items: EventItem[]): void {
     categoryTd.textContent = formatCategory(item.categories)
 
     const sourceTd = document.createElement("td")
-    sourceTd.textContent = item.source
+    const sourceList = document.createElement("div")
+    sourceList.className = "source-list"
 
-    const linksTd = document.createElement("td")
-    linksTd.className = "links"
-    const primary = document.createElement("a")
-    primary.href = item.url
-    primary.target = "_blank"
-    primary.rel = "noreferrer noopener"
-    primary.textContent = item.url
-    linksTd.appendChild(primary)
+    sourceList.appendChild(createSourceChip(item.url, item.source))
+
     if (item.altUrl) {
-      const alt = document.createElement("a")
-      alt.href = item.altUrl
-      alt.target = "_blank"
-      alt.rel = "noreferrer noopener"
-      alt.textContent = item.altUrl
-      linksTd.appendChild(alt)
+      const altSourceLabel = formatSourceHostLabel(getHostFromUrl(item.altUrl))
+      sourceList.appendChild(createSourceChip(item.altUrl, altSourceLabel))
     }
+
+    sourceTd.appendChild(sourceList)
 
     tr.appendChild(titleTd)
     tr.appendChild(dateTd)
     tr.appendChild(locationTd)
     tr.appendChild(categoryTd)
     tr.appendChild(sourceTd)
-    tr.appendChild(linksTd)
     rowsEl.appendChild(tr)
   }
 }
