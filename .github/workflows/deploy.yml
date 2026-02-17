@@ -14,25 +14,26 @@ jobs:
         username: ${{ secrets.VPS_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          cd fargoings
-          git pull origin main
-          
           # Stop existing fargoings processes
           pkill -f "fargoings.*tsx" || echo "No existing process found"
           
           # Give it a moment to die gracefully
           sleep 2
           
-          # Install dependencies and start
+          # Change to directory and install
+          cd /root/fargoings
+          git pull origin main
           npm install
-          nohup npm run web > output.log 2>&1 &
+          
+          # Start with absolute path and proper backgrounding
+          cd /root/fargoings
+          nohup npm run web > /root/fargoings/output.log 2>&1 </dev/null &
           
           # Verify it started
-          sleep 2
+          sleep 3
           if pgrep -f "fargoings.*tsx" > /dev/null; then
             echo "✅ Server started successfully"
-            exit 0
           else
-            echo "❌ Server failed to start"
+            echo "❌ Server failed to start - check /root/fargoings/output.log"
             exit 1
           fi
