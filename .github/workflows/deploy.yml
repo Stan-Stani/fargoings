@@ -6,18 +6,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     
-    steps:
-    - name: Stop old server
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          screen -S fargoings -X quit 2>/dev/null || true
-          pkill -f "fargoings.*tsx" || true
-          
-    - name: Update code
+    steps:          
+    - name: Deploy
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VPS_HOST }}
@@ -27,13 +17,5 @@ jobs:
           cd /root/fargoings
           git pull origin main
           npm install
-          
-    - name: Start server
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          cd /root/fargoings
-          screen -dmS fargoings npm run web
+          screen -S fargoings -X quit 2>/dev/null; screen -dmS fargoings npm run web
+          exit 0
