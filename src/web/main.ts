@@ -28,6 +28,8 @@ const pageSize = 50
 let page = 1
 let query = ""
 let totalPages = 1
+let sortByCategoryWithinDay = false
+let currentItems: EventItem[] = []
 
 const rowsEl = document.getElementById("rows") as HTMLTableSectionElement
 const metaEl = document.getElementById("meta") as HTMLDivElement
@@ -37,6 +39,9 @@ const nextBtn = document.getElementById("nextBtn") as HTMLButtonElement
 const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
+const categorySortHeaderEl = document.getElementById(
+  "categorySortHeader",
+) as HTMLTableCellElement
 const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
 const tableWrapEl = document.querySelector(
   ".table-wrap",
@@ -134,6 +139,64 @@ function formatCategory(categoriesRaw: string | null): string {
   return categoriesRaw || "N/A"
 }
 
+function updateCategorySortHeader(): void {
+  if (sortByCategoryWithinDay) {
+    categorySortHeaderEl.textContent = "Category (A→Z)"
+    categorySortHeaderEl.title =
+      "Sorted by category within each day. Click to restore default order."
+    categorySortHeaderEl.setAttribute("aria-sort", "ascending")
+  } else {
+    categorySortHeaderEl.textContent = "Category"
+    categorySortHeaderEl.title =
+      "Default order. Click to sort within each day by category (A→Z)."
+    categorySortHeaderEl.setAttribute("aria-sort", "none")
+  }
+}
+
+function toggleCategorySortWithinDay(): void {
+  sortByCategoryWithinDay = !sortByCategoryWithinDay
+  updateCategorySortHeader()
+  renderRows(sortItemsByCategoryWithinDay(currentItems))
+}
+
+function sortItemsByCategoryWithinDay(items: EventItem[]): EventItem[] {
+  if (!sortByCategoryWithinDay) {
+    return items
+  }
+
+  const sorted: EventItem[] = []
+  let currentDate = ""
+  let currentGroup: EventItem[] = []
+
+  const flushGroup = () => {
+    if (currentGroup.length === 0) {
+      return
+    }
+
+    currentGroup.sort((a, b) => {
+      const categoryA = formatCategory(a.categories)
+      const categoryB = formatCategory(b.categories)
+      return categoryA.localeCompare(categoryB, undefined, {
+        sensitivity: "base",
+      })
+    })
+
+    sorted.push(...currentGroup)
+    currentGroup = []
+  }
+
+  for (const item of items) {
+    if (item.date !== currentDate) {
+      flushGroup()
+      currentDate = item.date
+    }
+    currentGroup.push(item)
+  }
+
+  flushGroup()
+  return sorted
+}
+
 function renderRows(items: EventItem[]): void {
   rowsEl.innerHTML = ""
   let lastDate = ""
@@ -205,9 +268,10 @@ async function load(): Promise<void> {
 
   const response = await fetch(apiPath + "?" + params.toString())
   const data = (await response.json()) as EventsResponse
+  currentItems = data.items || []
 
   totalPages = data.totalPages || 1
-  renderRows(data.items || [])
+  renderRows(sortItemsByCategoryWithinDay(currentItems))
 
   metaEl.textContent =
     "Showing " +
@@ -255,5 +319,24 @@ searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
     searchBtn.click()
   }
 })
+
+categorySortHeaderEl.addEventListener("click", () => {
+  toggleCategorySortWithinDay()
+})
+
+categorySortHeaderEl.tabIndex = 0
+categorySortHeaderEl.setAttribute("role", "button")
+categorySortHeaderEl.setAttribute(
+  "aria-label",
+  "Toggle category sorting within each day",
+)
+categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault()
+    toggleCategorySortWithinDay()
+  }
+})
+
+updateCategorySortHeader()
 
 load()

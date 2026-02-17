@@ -235,6 +235,19 @@
         background: var(--surface-soft);
         font-weight: 600;
       }
+      #categorySortHeader {
+        cursor: pointer;
+        user-select: none;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      #categorySortHeader:hover {
+        color: var(--meta);
+      }
+      #categorySortHeader:focus-visible {
+        outline: 2px solid var(--text);
+        outline-offset: -2px;
+      }
       tr:last-child td {
         border-bottom: none;
       }
@@ -394,7 +407,9 @@
               <th>Title</th>
               <th>Date</th>
               <th>Location</th>
-              <th>Category</th>
+              <th id="categorySortHeader">
+                Category
+              </th>
               <th>Source</th>
               <th>Links</th>
             </tr>
