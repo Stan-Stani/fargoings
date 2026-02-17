@@ -41,9 +41,35 @@ function formatDate(date: string, time: string | null): string {
   return md + " " + hour + ":" + String(m).padStart(2, "0") + " " + ampm
 }
 
+function formatDayLabel(date: string): string {
+  const [year, month, day] = date.split("-").map(Number)
+  const localDate = new Date(year, month - 1, day)
+  return localDate.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
 function renderRows(items: EventItem[]): void {
   rowsEl.innerHTML = ""
+  let lastDate = ""
+
   for (const item of items) {
+    if (item.date !== lastDate) {
+      const dayMarkerRow = document.createElement("tr")
+      dayMarkerRow.className = "day-marker"
+
+      const dayMarkerCell = document.createElement("td")
+      dayMarkerCell.colSpan = 5
+      dayMarkerCell.textContent = formatDayLabel(item.date)
+
+      dayMarkerRow.appendChild(dayMarkerCell)
+      rowsEl.appendChild(dayMarkerRow)
+      lastDate = item.date
+    }
+
     const tr = document.createElement("tr")
 
     const titleTd = document.createElement("td")

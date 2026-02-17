@@ -71,17 +71,19 @@
         color: #4b5563;
       }
       .table-wrap {
-        overflow-x: auto;
+        overflow: auto;
         -webkit-overflow-scrolling: touch;
+        max-height: 72vh;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
       }
       table {
         width: 100%;
         min-width: 720px;
-        border-collapse: collapse;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        overflow: hidden;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: transparent;
       }
       th,
       td {
@@ -97,6 +99,16 @@
       }
       tr:last-child td {
         border-bottom: none;
+      }
+      .day-marker td {
+        background: #f3f4f6;
+        color: #374151;
+        font-weight: 600;
+        border-top: 1px solid #e5e7eb;
+        border-bottom: 1px solid #e5e7eb;
+        position: sticky;
+        top: 0;
+        z-index: 2;
       }
       .links a {
         display: block;
