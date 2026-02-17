@@ -37,10 +37,13 @@
         font-size: 12px;
       }
       .top-link {
-        margin: -6px 0 14px;
+        margin: -4px 0 12px;
         position: absolute;
         top: 10px;
         right: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
       }
       .top-link a {
         display: inline-flex;
@@ -160,11 +163,6 @@
   <body>
     <div class="container">
       <h1>Fargoings | Goings-On in Fargo</h1>
-      <div
-        id="versionBadge"
-        class="version-badge"
-        aria-label="App version"
-      ></div>
       <div class="top-link muted">
         <a
           href="https://github.com/Stan-Stani/fargoings"
@@ -175,6 +173,11 @@
             src="/assets/GitHub_Invertocat_Black_Clearspace.svg"
             alt="GitHub"
         /></a>
+        <div
+          id="versionBadge"
+          class="version-badge"
+          aria-label="App version"
+        ></div>
       </div>
       <div class="toolbar">
         <input id="search" placeholder="Search title, location, city, source" />
