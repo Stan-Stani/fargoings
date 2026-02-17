@@ -42,6 +42,9 @@ const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
 const categorySortHeaderEl = document.getElementById(
   "categorySortHeader",
 ) as HTMLTableCellElement
+const mobileCategorySortBtnEl = document.getElementById(
+  "mobileCategorySortBtn",
+) as HTMLButtonElement | null
 const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
 const tableWrapEl = document.querySelector(
   ".table-wrap",
@@ -151,6 +154,10 @@ function formatSourceHostLabel(host: string): string {
   return host.replace(/^www\./i, "")
 }
 
+function isMobileCardLayoutActive(): boolean {
+  return window.matchMedia("(max-width: 640px)").matches
+}
+
 function createSourceChip(url: string, label: string): HTMLAnchorElement {
   const sourceChip = document.createElement("a")
   sourceChip.className = "source-chip"
@@ -177,17 +184,50 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   return sourceChip
 }
 
+function createSourceIconLink(url: string): HTMLAnchorElement {
+  const sourceIconLink = document.createElement("a")
+  sourceIconLink.className = "source-icon-link"
+  sourceIconLink.href = url
+  sourceIconLink.target = "_blank"
+  sourceIconLink.rel = "noreferrer noopener"
+  sourceIconLink.title = formatSourceHostLabel(getHostFromUrl(url))
+  sourceIconLink.setAttribute("aria-label", `Open source: ${sourceIconLink.title}`)
+
+  const sourceFavicon = document.createElement("img")
+  sourceFavicon.className = "source-favicon"
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(getHostFromUrl(url))}`
+  sourceFavicon.alt = ""
+  sourceFavicon.loading = "lazy"
+  sourceFavicon.decoding = "async"
+  sourceFavicon.setAttribute("aria-hidden", "true")
+
+  sourceIconLink.appendChild(sourceFavicon)
+  return sourceIconLink
+}
+
 function updateCategorySortHeader(): void {
   if (sortByCategoryWithinDay) {
     categorySortHeaderEl.textContent = "Category (A→Z)"
     categorySortHeaderEl.title =
       "Sorted by category within each day. Click to restore default order."
     categorySortHeaderEl.setAttribute("aria-sort", "ascending")
+    if (mobileCategorySortBtnEl) {
+      mobileCategorySortBtnEl.textContent = "Category sort: On (A→Z)"
+      mobileCategorySortBtnEl.title =
+        "Sorted by category within each day. Tap to restore default order."
+      mobileCategorySortBtnEl.setAttribute("aria-pressed", "true")
+    }
   } else {
     categorySortHeaderEl.textContent = "Category"
     categorySortHeaderEl.title =
       "Default order. Click to sort within each day by category (A→Z)."
     categorySortHeaderEl.setAttribute("aria-sort", "none")
+    if (mobileCategorySortBtnEl) {
+      mobileCategorySortBtnEl.textContent = "Category sort: Off"
+      mobileCategorySortBtnEl.title =
+        "Default order. Tap to sort within each day by category (A→Z)."
+      mobileCategorySortBtnEl.setAttribute("aria-pressed", "false")
+    }
   }
 }
 
@@ -254,20 +294,76 @@ function renderRows(items: EventItem[]): void {
     }
 
     const tr = document.createElement("tr")
+    tr.className = "event-row"
+    tr.tabIndex = 0
+    tr.setAttribute("role", "link")
+    tr.setAttribute("aria-label", `Open event: ${item.title}`)
+
+    const navigateToEvent = () => {
+      if (!isMobileCardLayoutActive()) {
+        return
+      }
+      window.open(item.url, "_blank", "noopener,noreferrer")
+    }
+
+    tr.addEventListener("click", (event: MouseEvent) => {
+      const targetElement = event.target as Element | null
+      if (targetElement?.closest("a")) {
+        return
+      }
+      navigateToEvent()
+    })
+
+    tr.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault()
+        navigateToEvent()
+      }
+    })
 
     const titleTd = document.createElement("td")
-    titleTd.textContent = item.title
+    titleTd.setAttribute("data-label", "Title")
+    titleTd.className = "title-cell"
+    const titleText = document.createElement("span")
+    titleText.className = "event-title"
+    titleText.textContent = item.title
+    titleTd.appendChild(titleText)
 
     const dateTd = document.createElement("td")
+    dateTd.setAttribute("data-label", "Date")
+    dateTd.className = "datetime-cell"
     dateTd.textContent = formatDate(item.date, item.startTime)
 
     const locationTd = document.createElement("td")
+    locationTd.setAttribute("data-label", "Location")
+    locationTd.className = "location-cell"
     locationTd.textContent = item.location || "N/A"
 
     const categoryTd = document.createElement("td")
-    categoryTd.textContent = formatCategory(item.categories)
+    categoryTd.setAttribute("data-label", "Category")
+    categoryTd.className = "category-cell"
+
+    const categoryInline = document.createElement("div")
+    categoryInline.className = "category-inline"
+
+    const categoryPill = document.createElement("span")
+    categoryPill.className = "category-pill"
+    categoryPill.textContent = formatCategory(item.categories)
+    categoryInline.appendChild(categoryPill)
+
+    const sourceIconsInline = document.createElement("div")
+    sourceIconsInline.className = "source-icons-inline"
+    sourceIconsInline.appendChild(createSourceIconLink(item.url))
+    if (item.altUrl) {
+      sourceIconsInline.appendChild(createSourceIconLink(item.altUrl))
+    }
+    categoryInline.appendChild(sourceIconsInline)
+
+    categoryTd.appendChild(categoryInline)
 
     const sourceTd = document.createElement("td")
+    sourceTd.setAttribute("data-label", "Source")
+    sourceTd.className = "source-cell"
     const sourceList = document.createElement("div")
     sourceList.className = "source-list"
 
@@ -278,7 +374,12 @@ function renderRows(items: EventItem[]): void {
       sourceList.appendChild(createSourceChip(item.altUrl, altSourceLabel))
     }
 
+    const sourceMeta = document.createElement("div")
+    sourceMeta.className = "source-meta"
+    sourceMeta.textContent = formatSourceHostLabel(getHostFromUrl(item.url))
+
     sourceTd.appendChild(sourceList)
+    sourceTd.appendChild(sourceMeta)
 
     tr.appendChild(titleTd)
     tr.appendChild(dateTd)
@@ -351,6 +452,10 @@ searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
 })
 
 categorySortHeaderEl.addEventListener("click", () => {
+  toggleCategorySortWithinDay()
+})
+
+mobileCategorySortBtnEl?.addEventListener("click", () => {
   toggleCategorySortWithinDay()
 })
 
