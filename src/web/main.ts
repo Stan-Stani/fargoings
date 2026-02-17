@@ -16,6 +16,8 @@ type EventsResponse = {
   totalPages: number
 }
 
+declare const __APP_VERSION__: string
+
 const apiPath = "/api/events"
 const pageSize = 50
 let page = 1
@@ -30,6 +32,9 @@ const nextBtn = document.getElementById("nextBtn") as HTMLButtonElement
 const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
+const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
+
+versionBadgeEl.textContent = `v${__APP_VERSION__}`
 
 function formatDate(date: string, time: string | null): string {
   const [year, month, day] = date.split("-")
