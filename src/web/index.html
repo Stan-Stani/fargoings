@@ -149,9 +149,16 @@
       }
       .toolbar {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
         margin-bottom: 16px;
+      }
+      .search-group {
+        display: flex;
+        align-items: stretch;
+        width: min(100%, 820px);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        overflow: hidden;
       }
       input {
         padding: 8px 10px;
@@ -163,6 +170,15 @@
         max-width: 100%;
         flex: 1 1 240px;
       }
+      .search-group input {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        width: auto;
+        max-width: none;
+        min-width: 0;
+        padding: 8px 12px;
+      }
       button {
         padding: 8px 12px;
         border: 1px solid var(--border);
@@ -170,6 +186,14 @@
         background: var(--surface);
         color: var(--text);
         cursor: pointer;
+      }
+      .search-group button {
+        border: 0;
+        border-left: 1px solid var(--border-soft);
+        border-radius: 0;
+        background: var(--surface-soft);
+        padding: 8px 10px;
+        white-space: nowrap;
       }
       .theme-toggle {
         width: 30px;
@@ -292,9 +316,10 @@
           flex-direction: column;
         }
         .header-row {
-          flex-wrap: wrap;
-          align-items: flex-start;
-          gap: 6px;
+          display: grid;
+          grid-template-columns: 1fr;
+          align-items: start;
+          gap: 4px;
           margin-bottom: 8px;
         }
         h1 {
@@ -303,7 +328,8 @@
         }
         .top-link {
           margin: 0;
-          justify-content: flex-start;
+          width: 100%;
+          justify-content: flex-end;
           gap: 6px;
         }
         .top-link img {
@@ -315,24 +341,26 @@
           height: 28px;
           min-width: 28px;
         }
+        .theme-toggle svg {
+          width: 16px;
+          height: 16px;
+        }
         .version-badge {
           margin: 0;
           padding: 1px 6px;
           font-size: 11px;
         }
         .toolbar {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 5px;
+          display: block;
           margin-bottom: 8px;
         }
-        .toolbar input {
-          grid-column: 1 / -1;
+        .search-group {
           width: 100%;
+        }
+        .search-group input {
           padding: 7px 9px;
         }
-        .toolbar button {
-          width: 100%;
+        .search-group button {
           padding: 7px 9px;
         }
         .meta {
@@ -392,12 +420,14 @@
         </div>
       </div>
       <div class="toolbar">
-        <input
-          id="search"
-          placeholder="Search title, location, city, category, source"
-        />
-        <button id="searchBtn">Search</button>
-        <button id="clearBtn">Clear</button>
+        <div class="search-group">
+          <input
+            id="search"
+            placeholder="Search title, location, city, category, source"
+          />
+          <button id="searchBtn">Search</button>
+          <button id="clearBtn">Clear</button>
+        </div>
       </div>
       <div id="meta" class="meta">Loading…</div>
       <div class="table-wrap">
@@ -407,9 +437,7 @@
               <th>Title</th>
               <th>Date</th>
               <th>Location</th>
-              <th id="categorySortHeader">
-                Category
-              </th>
+              <th id="categorySortHeader">Category</th>
               <th>Source</th>
               <th>Links</th>
             </tr>
