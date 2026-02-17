@@ -14,17 +14,19 @@ jobs:
         username: ${{ secrets.VPS_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          # Stop existing fargoings processes
-          pkill -f "fargoings.*tsx" || echo "No existing process found"
+          # Kill the fargoings screen session if it exists
+          screen -S fargoings -X quit 2>/dev/null || echo "No existing screen session"
+          
+          # Double-check processes are stopped
+          pkill -f "fargoings.*tsx" || echo "No existing process"
           sleep 2
           
-          # Deploy
           cd /root/fargoings
           git pull origin main
           npm install
           
-          # Start in background (double fork to fully detach)
-          cd /root/fargoings
-          setsid nohup npm run web > /root/fargoings/output.log 2>&1 < /dev/null &
+          # Start new screen session
+          screen -dmS fargoings bash -c 'cd /root/fargoings && npm run web > output.log 2>&1'
           
-          echo "✅ Deploy commands completed"
+          sleep 2
+          echo "✅ Deployment complete"
