@@ -83,6 +83,9 @@
       .container {
         max-width: 1200px;
         margin: 0 auto;
+        min-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
       }
       .header-row {
         display: flex;
@@ -229,7 +232,9 @@
       .table-wrap {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
-        max-height: 72vh;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
         border: 1px solid var(--border-soft);
         border-radius: 10px;
         background: var(--surface);
@@ -366,7 +371,7 @@
         white-space: nowrap;
       }
       .pagination {
-        margin-top: 14px;
+        margin-top: 10px;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -583,16 +588,13 @@
           margin-top: 8px;
           flex-shrink: 0;
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr;
           gap: 6px;
           align-items: center;
         }
         .pagination button {
           width: 100%;
           padding: 7px 9px;
-        }
-        .pagination #pageInfo {
-          grid-column: 1 / -1;
         }
       }
     </style>
@@ -664,9 +666,7 @@
         </table>
       </div>
       <div class="pagination">
-        <button id="prevBtn">Prev</button>
-        <button id="nextBtn">Next</button>
-        <span id="pageInfo" class="muted"></span>
+        <button id="loadMoreBtn" type="button">Load more</button>
       </div>
     </div>
 

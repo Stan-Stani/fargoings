@@ -28,14 +28,15 @@ const pageSize = 50
 let page = 1
 let query = ""
 let totalPages = 1
+let hasMore = false
 let sortByCategoryWithinDay = false
 let currentItems: EventItem[] = []
+let lastRenderedDate = ""
+let isLoading = false
 
 const rowsEl = document.getElementById("rows") as HTMLTableSectionElement
 const metaEl = document.getElementById("meta") as HTMLDivElement
-const pageInfoEl = document.getElementById("pageInfo") as HTMLSpanElement
-const prevBtn = document.getElementById("prevBtn") as HTMLButtonElement
-const nextBtn = document.getElementById("nextBtn") as HTMLButtonElement
+const loadMoreBtn = document.getElementById("loadMoreBtn") as HTMLButtonElement
 const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
@@ -290,9 +291,14 @@ function sortItemsByCategoryWithinDay(items: EventItem[]): EventItem[] {
   return sorted
 }
 
-function renderRows(items: EventItem[]): void {
-  rowsEl.innerHTML = ""
-  let lastDate = ""
+function renderRows(items: EventItem[], options?: { append?: boolean }): void {
+  const append = options?.append ?? false
+  if (!append) {
+    rowsEl.innerHTML = ""
+    lastRenderedDate = ""
+  }
+
+  let lastDate = append ? lastRenderedDate : ""
 
   for (const item of items) {
     if (item.date !== lastDate) {
@@ -403,61 +409,87 @@ function renderRows(items: EventItem[]): void {
     tr.appendChild(sourceTd)
     rowsEl.appendChild(tr)
   }
+
+  lastRenderedDate = lastDate
 }
 
-async function load(): Promise<void> {
+function updateLoadMoreUi(): void {
+  loadMoreBtn.style.display = hasMore ? "" : "none"
+  loadMoreBtn.disabled = !hasMore || isLoading
+}
+
+async function load(mode: "replace" | "append" = "replace"): Promise<void> {
+  if (isLoading) {
+    return
+  }
+
+  isLoading = true
+  updateLoadMoreUi()
+
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   })
   if (query) params.set("q", query)
 
-  const response = await fetch(apiPath + "?" + params.toString())
-  const data = (await response.json()) as EventsResponse
-  currentItems = data.items || []
+  try {
+    const response = await fetch(apiPath + "?" + params.toString())
+    const data = (await response.json()) as EventsResponse
+    const newItems = data.items || []
 
-  totalPages = data.totalPages || 1
-  renderRows(sortItemsByCategoryWithinDay(currentItems))
+    page = data.page || page
+    totalPages = data.totalPages || 1
 
-  metaEl.textContent =
-    "Showing " +
-    data.items.length +
-    " of " +
-    data.total +
-    " results" +
-    (query ? ' for "' + query + '"' : "")
-  pageInfoEl.textContent = "Page " + data.page + " of " + totalPages
-  prevBtn.disabled = data.page <= 1
-  nextBtn.disabled = data.page >= totalPages
+    if (mode === "replace") {
+      currentItems = newItems
+      renderRows(sortItemsByCategoryWithinDay(currentItems))
+      tableWrapEl?.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    } else {
+      currentItems = currentItems.concat(newItems)
+      if (sortByCategoryWithinDay) {
+        renderRows(sortItemsByCategoryWithinDay(currentItems))
+      } else {
+        renderRows(newItems, { append: true })
+      }
+    }
 
-  tableWrapEl?.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    metaEl.textContent =
+      "Showing " +
+      currentItems.length +
+      " of " +
+      data.total +
+      " results" +
+      (query ? ' for "' + query + '"' : "")
+
+    hasMore =
+      page < totalPages &&
+      currentItems.length < data.total &&
+      newItems.length > 0
+  } finally {
+    isLoading = false
+    updateLoadMoreUi()
+  }
 }
 
-prevBtn.addEventListener("click", () => {
-  if (page > 1) {
-    page -= 1
-    load()
+loadMoreBtn.addEventListener("click", () => {
+  if (!hasMore) {
+    return
   }
-})
-
-nextBtn.addEventListener("click", () => {
-  if (page < totalPages) {
-    page += 1
-    load()
-  }
+  page += 1
+  load("append")
 })
 
 searchBtn.addEventListener("click", () => {
   query = searchInput.value.trim()
   page = 1
-  load()
+  load("replace")
 })
 
 clearBtn.addEventListener("click", () => {
   searchInput.value = ""
   query = ""
   page = 1
-  load()
+  load("replace")
 })
 
 searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -489,4 +521,4 @@ categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
 
 updateCategorySortHeader()
 
-load()
+load("replace")
