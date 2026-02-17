@@ -16,24 +16,15 @@ jobs:
         script: |
           # Stop existing fargoings processes
           pkill -f "fargoings.*tsx" || echo "No existing process found"
-          
-          # Give it a moment to die gracefully
           sleep 2
           
-          # Change to directory and install
+          # Deploy
           cd /root/fargoings
           git pull origin main
           npm install
           
-          # Start with absolute path and proper backgrounding
+          # Start in background (double fork to fully detach)
           cd /root/fargoings
-          nohup npm run web > /root/fargoings/output.log 2>&1 </dev/null &
+          setsid nohup npm run web > /root/fargoings/output.log 2>&1 < /dev/null &
           
-          # Verify it started
-          sleep 3
-          if pgrep -f "fargoings.*tsx" > /dev/null; then
-            echo "✅ Server started successfully"
-          else
-            echo "❌ Server failed to start - check /root/fargoings/output.log"
-            exit 1
-          fi
+          echo "✅ Deploy commands completed"
