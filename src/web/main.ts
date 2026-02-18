@@ -434,6 +434,13 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
 
   try {
     const response = await fetch(apiPath + "?" + params.toString())
+    if (!response.ok) {
+      const bodyPreview = (await response.text()).slice(0, 200)
+      throw new Error(
+        `HTTP ${response.status} ${response.statusText}: ${bodyPreview}`,
+      )
+    }
+
     const data = (await response.json()) as EventsResponse
     const newItems = data.items || []
 
@@ -465,6 +472,11 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
       page < totalPages &&
       currentItems.length < data.total &&
       newItems.length > 0
+  } catch (error) {
+    metaEl.textContent =
+      "Error loading events. " +
+      (error instanceof Error ? error.message : String(error))
+    console.error("❌ Failed to load events:", error)
   } finally {
     isLoading = false
     updateLoadMoreUi()

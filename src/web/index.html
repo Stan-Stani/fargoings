@@ -391,7 +391,10 @@
           margin: 12px;
         }
         .container {
+          height: calc(100vh - 24px);
+          height: calc(100svh - 24px);
           height: calc(100dvh - 24px);
+          min-height: 0;
           display: flex;
           flex-direction: column;
         }
@@ -591,6 +594,8 @@
           grid-template-columns: 1fr;
           gap: 6px;
           align-items: center;
+          padding-bottom: env(safe-area-inset-bottom);
+
         }
         .pagination button {
           width: 100%;
