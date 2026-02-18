@@ -5,6 +5,7 @@ import { decodeHtmlEntities } from "./dedup/normalize"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
+import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear()
@@ -20,6 +21,7 @@ async function main() {
   const fargoFetcher = new FargoFetcher()
   const undergroundFetcher = new FargoUndergroundFetcher()
   const downtownFetcher = new DowntownFargoFetcher()
+  const westFargoFetcher = new WestFargoEventsFetcher()
 
   try {
     const today = getLocalDateString(new Date())
@@ -28,12 +30,16 @@ async function main() {
       "fargounderground.com",
     )
     const downtownLastUpdated = db.getSourceLastUpdatedDate("downtownfargo.com")
+    const westFargoLastUpdated = db.getSourceLastUpdatedDate(
+      "westfargoevents.com",
+    )
     const freshCount = [
       fargoLastUpdated,
       undergroundLastUpdated,
       downtownLastUpdated,
+      westFargoLastUpdated,
     ].filter((date) => date === today).length
-    const staleCount = 3 - freshCount
+    const staleCount = 4 - freshCount
     console.log(`🧊 Cache status: ${freshCount} fresh, ${staleCount} stale`)
 
     // Fetch from fargomoorhead.org
@@ -106,17 +112,47 @@ async function main() {
       console.log(`✓ Processed ${downtownInserted} events\n`)
     }
 
+    // Fetch from westfargoevents.com
+    console.log(
+      `   westfargoevents.com cache date: ${westFargoLastUpdated || "never"} (today: ${today})`,
+    )
+    if (westFargoLastUpdated === today) {
+      console.log(
+        "⏭️  Using cached westfargoevents.com events (fresh today).\n",
+      )
+    } else {
+      console.log(
+        "📥 Fetching events from westfargoevents.com (next 2 weeks)...",
+      )
+      const westFargoEvents = await westFargoFetcher.fetchEvents()
+      console.log(`✓ Fetched ${westFargoEvents.length} events\n`)
+
+      console.log("💾 Storing westfargoevents.com events...")
+      let westFargoInserted = 0
+      for (const event of westFargoEvents) {
+        const storedEvent = westFargoFetcher.transformToStoredEvent(event)
+        db.insertEvent(storedEvent)
+        westFargoInserted++
+      }
+      db.setSourceLastUpdatedDate("westfargoevents.com", today)
+      console.log(`✓ Processed ${westFargoInserted} events\n`)
+    }
+
     // Deduplicate events across all sources
     console.log("🔍 Finding duplicate events...")
     const fargoStored = db.getEventsBySource("fargomoorhead.org")
     const undergroundStored = db.getEventsBySource("fargounderground.com")
     const downtownStored = db.getEventsBySource("downtownfargo.com")
+    const westFargoStored = db.getEventsBySource("westfargoevents.com")
 
     // Find matches between all source pairs
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
+      ...findMatches(fargoStored, westFargoStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
+      ...findMatches(downtownStored, westFargoStored, 0.65),
+      ...findMatches(undergroundStored, westFargoStored, 0.65),
     ]
 
     db.clearMatches()

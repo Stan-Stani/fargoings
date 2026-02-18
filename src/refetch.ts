@@ -3,6 +3,7 @@ import { findMatches } from "./dedup/matcher"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
+import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear()
@@ -24,6 +25,7 @@ async function main() {
     db.deleteEventsBySource("fargomoorhead.org")
     db.deleteEventsBySource("fargounderground.com")
     db.deleteEventsBySource("downtownfargo.com")
+    db.deleteEventsBySource("westfargoevents.com")
     console.log("   Cleared existing events\n")
 
     // Fetch fargomoorhead.org
@@ -56,16 +58,30 @@ async function main() {
     db.setSourceLastUpdatedDate("downtownfargo.com", today)
     console.log(`✓ Stored ${downtownEvents.length} events\n`)
 
+    // Fetch westfargoevents.com
+    console.log("📥 Fetching westfargoevents.com...")
+    const westFargoFetcher = new WestFargoEventsFetcher()
+    const westFargoEvents = await westFargoFetcher.fetchEvents()
+    for (const event of westFargoEvents) {
+      db.insertEvent(westFargoFetcher.transformToStoredEvent(event))
+    }
+    db.setSourceLastUpdatedDate("westfargoevents.com", today)
+    console.log(`✓ Stored ${westFargoEvents.length} events\n`)
+
     // Rebuild dedup matches across all source pairs
     console.log("🔍 Rebuilding duplicate matches...")
     const fargoStored = db.getEventsBySource("fargomoorhead.org")
     const undergroundStored = db.getEventsBySource("fargounderground.com")
     const downtownStored = db.getEventsBySource("downtownfargo.com")
+    const westFargoStored = db.getEventsBySource("westfargoevents.com")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
+      ...findMatches(fargoStored, westFargoStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
+      ...findMatches(downtownStored, westFargoStored, 0.65),
+      ...findMatches(undergroundStored, westFargoStored, 0.65),
     ]
 
     db.clearMatches()

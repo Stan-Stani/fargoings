@@ -4,10 +4,11 @@ A Node.js/TypeScript event aggregator that fetches and stores events from multip
 
 ## Features
 
-- Aggregates events from **3 sources**:
+- Aggregates events from **4 sources**:
   - fargomoorhead.org (API with dynamic token)
   - fargounderground.com (JSON API)
   - downtownfargo.com (POST API + HTML scraping for locations)
+  - westfargoevents.com (WordPress/The Events Calendar JSON API)
 - **Automatic deduplication** - Identifies duplicate events across sources using title/date/location matching
 - Stores events in SQLite database
 - Prevents duplicates with upsert logic
@@ -47,7 +48,7 @@ npm start
 - Cache is tracked per source in the `source_cache` table.
 - `npm start` skips network fetch for a source when its cache date is already today.
 - `npm start` fetches only stale sources and updates each source cache date after a successful fetch.
-- `npm run refetch` always fetches all three sources and refreshes all cache dates.
+- `npm run refetch` always fetches all sources and refreshes all cache dates.
 - On a fresh database (no cache dates yet), all sources are fetched.
 
 ## Database Schema

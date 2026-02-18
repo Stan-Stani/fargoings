@@ -150,3 +150,64 @@ export async function fetchWithRetry(
     ? lastError
     : new Error(`${label} failed after retries`)
 }
+
+export interface TribeEventsApiResponse<TEvent> {
+  events: TEvent[]
+  total?: number
+  total_pages?: number
+  rest_url?: string
+  next_rest_url?: string
+}
+
+export interface FetchTribeEventsOptions {
+  baseUrl: string
+  label: string
+  timeZone: string
+  perPage?: number
+  daysAhead?: number
+  headers?: Record<string, string>
+}
+
+export async function fetchTribeEvents<TEvent>(
+  options: FetchTribeEventsOptions,
+): Promise<TEvent[]> {
+  const perPage = options.perPage ?? 100
+  const daysAhead = options.daysAhead ?? 14
+  const headers = options.headers ?? DEFAULT_BROWSER_HEADERS
+
+  const dateRange = getDateRangeInTimeZone(daysAhead, options.timeZone)
+
+  console.log(
+    `   Date range (${options.timeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
+  )
+
+  const allEvents: TEvent[] = []
+  let page = 1
+
+  while (true) {
+    const url = `${options.baseUrl}?per_page=${perPage}&page=${page}&start_date=${dateRange.startDateStr}&end_date=${dateRange.endDateStr}`
+
+    const response = await fetchWithRetry(
+      url,
+      { headers },
+      `${options.label} (page ${page})`,
+    )
+
+    const data = (await response.json()) as TribeEventsApiResponse<TEvent>
+    const events = data.events ?? []
+    allEvents.push(...events)
+
+    const totalPages = data.total_pages ?? 1
+    console.log(
+      `   Fetched page ${page}/${totalPages} (${events.length} events)`,
+    )
+
+    if (page >= totalPages) {
+      break
+    }
+
+    page++
+  }
+
+  return allEvents
+}

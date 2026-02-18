@@ -1,10 +1,10 @@
 import { FargoUndergroundEvent, StoredEvent } from "../types/event"
 import { DEFAULT_BROWSER_HEADERS, fetchTribeEvents } from "./shared"
 
-export class FargoUndergroundFetcher {
+export class WestFargoEventsFetcher {
   private readonly clientTimeZone = "America/Chicago"
   private readonly baseUrl =
-    "https://fargounderground.com/wp-json/tribe/events/v1/events"
+    "https://westfargoevents.com/wp-json/tribe/events/v1/events"
 
   async fetchEvents(
     perPage: number = 100,
@@ -13,14 +13,14 @@ export class FargoUndergroundFetcher {
     try {
       return await fetchTribeEvents<FargoUndergroundEvent>({
         baseUrl: this.baseUrl,
-        label: "Fargo Underground events fetch",
+        label: "West Fargo Events fetch",
         timeZone: this.clientTimeZone,
         perPage,
         daysAhead,
         headers: DEFAULT_BROWSER_HEADERS,
       })
     } catch (error) {
-      console.error("Error fetching Fargo Underground events:", error)
+      console.error("Error fetching West Fargo Events:", error)
       throw error
     }
   }
@@ -28,11 +28,9 @@ export class FargoUndergroundFetcher {
   transformToStoredEvent(
     event: FargoUndergroundEvent,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
-    // Parse start time from start_date (format: "2026-02-13 09:00:00")
     const startTimeParts = event.start_date.split(" ")
     const startTime = startTimeParts.length > 1 ? startTimeParts[1] : null
 
-    // Build location string from venue
     let location: string | null = null
     if (event.venue) {
       location = event.venue.venue
@@ -41,18 +39,17 @@ export class FargoUndergroundFetcher {
       }
     }
 
-    // Transform categories to match our format
     const categories = event.categories.map((cat) => ({
       catName: cat.name,
       catId: cat.id.toString(),
     }))
 
     return {
-      eventId: `fu_${event.id}`, // Prefix to avoid ID collisions
+      eventId: `wfe_${event.id}`,
       title: event.title,
       url: event.url,
       location,
-      date: event.start_date.split(" ")[0], // Just the date part
+      date: event.start_date.split(" ")[0],
       startTime,
       startDate: event.start_date.split(" ")[0],
       endDate: event.end_date.split(" ")[0],
@@ -61,7 +58,7 @@ export class FargoUndergroundFetcher {
       city: event.venue?.city || null,
       imageUrl: event.image?.url || null,
       categories: JSON.stringify(categories),
-      source: "fargounderground.com",
+      source: "westfargoevents.com",
     }
   }
 }
