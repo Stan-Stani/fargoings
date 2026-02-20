@@ -490,6 +490,39 @@ export class EventDatabase {
     return stmt.all(todayInFargo, limit, offset) as DisplayEvent[]
   }
 
+  getDistinctCategories(): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT DISTINCT categories FROM display_events WHERE categories IS NOT NULL AND categories != '[]'",
+      )
+      .all() as { categories: string }[]
+
+    const names = new Set<string>()
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.categories) as unknown
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item === "object") {
+              const rec = item as Record<string, unknown>
+              if (typeof rec.catName === "string" && rec.catName) {
+                names.add(rec.catName)
+              }
+            } else if (typeof item === "string" && item) {
+              names.add(item)
+            }
+          }
+        }
+      } catch {
+        // skip unparseable rows
+      }
+    }
+
+    return Array.from(names).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    )
+  }
+
   getDisplayCount(): number {
     const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
     const result = this.db
@@ -503,69 +536,48 @@ export class EventDatabase {
     limit: number,
     offset: number,
     sortDir: "asc" | "desc" = "asc",
+    category: string = "",
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
+    const normalizedCategory = category.trim().toLowerCase()
     const dir = sortDir === "desc" ? "DESC" : "ASC"
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
 
-    if (!normalizedQuery) {
-      const rows = this.getDisplayEvents(limit, offset, sortDir)
-      return {
-        rows,
-        total: this.getDisplayCount(),
-      }
-    }
+    const conditions: string[] = ["date >= ?"]
+    const params: unknown[] = [todayInFargo]
 
-    const likeParam = `%${normalizedQuery}%`
-
-    const whereClause = `
-      WHERE date >= ?
-        AND (
+    if (normalizedQuery) {
+      const likeParam = `%${normalizedQuery}%`
+      conditions.push(`(
              lower(title) LIKE ?
          OR lower(coalesce(location, '')) LIKE ?
          OR lower(coalesce(city, '')) LIKE ?
          OR lower(coalesce(categories, '')) LIKE ?
          OR lower(coalesce(source, '')) LIKE ?
-        )
-    `
+        )`)
+      params.push(likeParam, likeParam, likeParam, likeParam, likeParam)
+    }
 
-    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
+    if (normalizedCategory) {
+      conditions.push("lower(coalesce(categories, '')) LIKE ?")
+      params.push(`%${normalizedCategory}%`)
+    }
+
+    const whereClause = `WHERE ${conditions.join(" AND ")}`
+    const orderClause = `ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}`
 
     const rows = this.db
       .prepare(
-        `
-      SELECT * FROM display_events
-      ${whereClause}
-      ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}
-      LIMIT ? OFFSET ?
-    `,
+        `SELECT * FROM display_events ${whereClause} ${orderClause} LIMIT ? OFFSET ?`,
       )
-      .all(
-        todayInFargo,
-        likeParam,
-        likeParam,
-        likeParam,
-        likeParam,
-        likeParam,
-        limit,
-        offset,
-      ) as DisplayEvent[]
+      .all(...params, limit, offset) as DisplayEvent[]
 
     const total = (
       this.db
         .prepare(
-          `
-      SELECT COUNT(*) as count FROM display_events
-      ${whereClause}
-    `,
+          `SELECT COUNT(*) as count FROM display_events ${whereClause}`,
         )
-        .get(
-          todayInFargo,
-          likeParam,
-          likeParam,
-          likeParam,
-          likeParam,
-          likeParam,
-        ) as { count: number }
+        .get(...params) as { count: number }
     ).count
 
     return { rows, total }

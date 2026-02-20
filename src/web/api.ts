@@ -77,8 +77,14 @@ async function main() {
       return
     }
 
+    if (pathname === "/api/categories") {
+      sendJson(res, 200, { categories: db.getDistinctCategories() })
+      return
+    }
+
     if (pathname === "/api/events") {
       const query = requestUrl.searchParams.get("q") || ""
+      const category = requestUrl.searchParams.get("category") || ""
       const page = toPositiveInt(requestUrl.searchParams.get("page"), 1)
       const pageSize = Math.min(
         100,
@@ -88,7 +94,13 @@ async function main() {
       const sortDir =
         requestUrl.searchParams.get("sort") === "desc" ? "desc" : "asc"
 
-      const result = db.queryDisplayEvents(query, pageSize, offset, sortDir)
+      const result = db.queryDisplayEvents(
+        query,
+        pageSize,
+        offset,
+        sortDir,
+        category,
+      )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
       sendJson(res, 200, {

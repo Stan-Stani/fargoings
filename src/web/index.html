@@ -152,7 +152,24 @@
       }
       .toolbar {
         display: flex;
+        flex-direction: column;
+        gap: 8px;
         margin-bottom: 16px;
+      }
+      .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      select {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 14px;
+        cursor: pointer;
+        max-width: 220px;
       }
       .search-group {
         display: flex;
@@ -644,6 +661,11 @@
           />
           <button id="searchBtn">Search</button>
           <button id="clearBtn">Clear</button>
+        </div>
+        <div class="filter-row">
+          <select id="categoryFilter" aria-label="Filter by category">
+            <option value="">All categories</option>
+          </select>
         </div>
       </div>
       <div class="meta-row">

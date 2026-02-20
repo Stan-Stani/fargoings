@@ -27,6 +27,7 @@ const apiPath = "/api/events"
 const pageSize = 50
 let page = 1
 let query = ""
+let categoryFilter = ""
 let totalPages = 1
 let hasMore = false
 let sortByCategoryWithinDay = false
@@ -54,6 +55,9 @@ const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
 const tableWrapEl = document.querySelector(
   ".table-wrap",
 ) as HTMLDivElement | null
+const categoryFilterEl = document.getElementById(
+  "categoryFilter",
+) as HTMLSelectElement
 const themeToggleBtn = document.getElementById(
   "themeToggle",
 ) as HTMLButtonElement
@@ -454,6 +458,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
     sort: timeSortDir,
   })
   if (query) params.set("q", query)
+  if (categoryFilter) params.set("category", categoryFilter)
 
   try {
     const response = await fetch(apiPath + "?" + params.toString())
@@ -523,6 +528,8 @@ searchBtn.addEventListener("click", () => {
 clearBtn.addEventListener("click", () => {
   searchInput.value = ""
   query = ""
+  categoryFilter = ""
+  categoryFilterEl.value = ""
   page = 1
   load("replace")
 })
@@ -567,7 +574,30 @@ categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 })
 
+categoryFilterEl.addEventListener("change", () => {
+  categoryFilter = categoryFilterEl.value
+  page = 1
+  load("replace")
+})
+
+async function populateCategoryFilter(): Promise<void> {
+  try {
+    const res = await fetch("/api/categories")
+    if (!res.ok) return
+    const data = (await res.json()) as { categories: string[] }
+    for (const cat of data.categories) {
+      const opt = document.createElement("option")
+      opt.value = cat
+      opt.textContent = cat
+      categoryFilterEl.appendChild(opt)
+    }
+  } catch {
+    // non-critical; filter just stays as "All categories"
+  }
+}
+
 updateCategorySortHeader()
 updateDateSortHeader()
 
+populateCategoryFilter()
 load("replace")
