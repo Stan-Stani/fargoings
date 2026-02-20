@@ -85,8 +85,10 @@ async function main() {
         Math.max(1, toPositiveInt(requestUrl.searchParams.get("pageSize"), 25)),
       )
       const offset = (page - 1) * pageSize
+      const sortDir =
+        requestUrl.searchParams.get("sort") === "desc" ? "desc" : "asc"
 
-      const result = db.queryDisplayEvents(query, pageSize, offset)
+      const result = db.queryDisplayEvents(query, pageSize, offset, sortDir)
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
       sendJson(res, 200, {

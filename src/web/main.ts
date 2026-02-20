@@ -30,6 +30,7 @@ let query = ""
 let totalPages = 1
 let hasMore = false
 let sortByCategoryWithinDay = false
+let timeSortDir: "asc" | "desc" = "asc"
 let currentItems: EventItem[] = []
 let lastRenderedDate = ""
 let isLoading = false
@@ -40,6 +41,9 @@ const loadMoreBtn = document.getElementById("loadMoreBtn") as HTMLButtonElement
 const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
+const dateSortHeaderEl = document.getElementById(
+  "dateSortHeader",
+) as HTMLTableCellElement
 const categorySortHeaderEl = document.getElementById(
   "categorySortHeader",
 ) as HTMLTableCellElement
@@ -247,6 +251,24 @@ function updateCategorySortHeader(): void {
   }
 }
 
+function updateDateSortHeader(): void {
+  const indicator = timeSortDir === "asc" ? "▲" : "▼"
+  const dirLabel = timeSortDir === "asc" ? "oldest first" : "newest first"
+  dateSortHeaderEl.textContent = `Date ${indicator}`
+  dateSortHeaderEl.title = `Sorted by time (${dirLabel}). Click to reverse.`
+  dateSortHeaderEl.setAttribute(
+    "aria-sort",
+    timeSortDir === "asc" ? "ascending" : "descending",
+  )
+}
+
+function toggleTimeSort(): void {
+  timeSortDir = timeSortDir === "asc" ? "desc" : "asc"
+  updateDateSortHeader()
+  page = 1
+  load("replace")
+}
+
 function toggleCategorySortWithinDay(): void {
   sortByCategoryWithinDay = !sortByCategoryWithinDay
   updateCategorySortHeader()
@@ -429,6 +451,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
+    sort: timeSortDir,
   })
   if (query) params.set("q", query)
 
@@ -510,6 +533,19 @@ searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 })
 
+dateSortHeaderEl.tabIndex = 0
+dateSortHeaderEl.setAttribute("role", "button")
+dateSortHeaderEl.setAttribute("aria-label", "Toggle time sort direction")
+dateSortHeaderEl.addEventListener("click", () => {
+  toggleTimeSort()
+})
+dateSortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault()
+    toggleTimeSort()
+  }
+})
+
 categorySortHeaderEl.addEventListener("click", () => {
   toggleCategorySortWithinDay()
 })
@@ -532,5 +568,6 @@ categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
 })
 
 updateCategorySortHeader()
+updateDateSortHeader()
 
 load("replace")

@@ -274,16 +274,19 @@
         background: var(--surface-soft);
         font-weight: 600;
       }
-      #categorySortHeader {
+      #categorySortHeader,
+      #dateSortHeader {
         cursor: pointer;
         user-select: none;
         text-decoration: underline;
         text-underline-offset: 2px;
       }
-      #categorySortHeader:hover {
+      #categorySortHeader:hover,
+      #dateSortHeader:hover {
         color: var(--meta);
       }
-      #categorySortHeader:focus-visible {
+      #categorySortHeader:focus-visible,
+      #dateSortHeader:focus-visible {
         outline: 2px solid var(--text);
         outline-offset: -2px;
       }
@@ -661,7 +664,7 @@
           <thead>
             <tr>
               <th>Title</th>
-              <th>Date</th>
+              <th id="dateSortHeader">Date ▲</th>
               <th>Location</th>
               <th id="categorySortHeader">Category</th>
               <th>Source</th>

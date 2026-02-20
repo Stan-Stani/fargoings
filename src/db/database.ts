@@ -474,12 +474,17 @@ export class EventDatabase {
     return deduplicatedEvents.length
   }
 
-  getDisplayEvents(limit: number = 100, offset: number = 0): DisplayEvent[] {
+  getDisplayEvents(
+    limit: number = 100,
+    offset: number = 0,
+    sortDir: "asc" | "desc" = "asc",
+  ): DisplayEvent[] {
+    const dir = sortDir === "desc" ? "DESC" : "ASC"
     const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
     const stmt = this.db.prepare(`
       SELECT * FROM display_events
       WHERE date >= ?
-      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
+      ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}
       LIMIT ? OFFSET ?
     `)
     return stmt.all(todayInFargo, limit, offset) as DisplayEvent[]
@@ -497,11 +502,13 @@ export class EventDatabase {
     searchQuery: string,
     limit: number,
     offset: number,
+    sortDir: "asc" | "desc" = "asc",
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
+    const dir = sortDir === "desc" ? "DESC" : "ASC"
 
     if (!normalizedQuery) {
-      const rows = this.getDisplayEvents(limit, offset)
+      const rows = this.getDisplayEvents(limit, offset, sortDir)
       return {
         rows,
         total: this.getDisplayCount(),
@@ -528,7 +535,7 @@ export class EventDatabase {
         `
       SELECT * FROM display_events
       ${whereClause}
-      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
+      ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}
       LIMIT ? OFFSET ?
     `,
       )
