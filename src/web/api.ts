@@ -171,6 +171,8 @@ async function main() {
           title: decodeHtmlEntities(row.title),
           location: row.location ? decodeHtmlEntities(row.location) : null,
           categories: extractCategory(row.categories),
+          latitude: row.latitude ?? null,
+          longitude: row.longitude ?? null,
         })),
         total: result.total,
         page,

@@ -26,6 +26,8 @@ export interface DisplayEvent {
   imageUrl: string | null
   categories: string
   source: string
+  latitude: number | null
+  longitude: number | null
   createdAt: string
   updatedAt: string
 }
@@ -106,6 +108,8 @@ export class EventDatabase {
         imageUrl TEXT,
         categories TEXT,
         source TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
         updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -113,6 +117,18 @@ export class EventDatabase {
       CREATE INDEX IF NOT EXISTS idx_display_events_date ON display_events(date);
       CREATE INDEX IF NOT EXISTS idx_display_events_source ON display_events(source);
     `)
+
+    // Migrate existing display_events tables that predate the latitude/longitude columns
+    const cols = (
+      this.db.prepare("PRAGMA table_info(display_events)").all() as {
+        name: string
+      }[]
+    ).map((c) => c.name)
+    if (!cols.includes("latitude")) {
+      this.db.exec(
+        "ALTER TABLE display_events ADD COLUMN latitude REAL; ALTER TABLE display_events ADD COLUMN longitude REAL;",
+      )
+    }
   }
 
   private normalizeDate(date: string): string {
@@ -447,8 +463,8 @@ export class EventDatabase {
 
     const deleteStmt = this.db.prepare("DELETE FROM display_events")
     const insertStmt = this.db.prepare(`
-      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source)
-      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source)
+      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude)
+      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source, @latitude, @longitude)
     `)
 
     const transaction = this.db.transaction(() => {
@@ -466,6 +482,8 @@ export class EventDatabase {
           imageUrl: event.imageUrl,
           categories: event.categories,
           source: event.source,
+          latitude: event.latitude ?? null,
+          longitude: event.longitude ?? null,
         })
       }
     })

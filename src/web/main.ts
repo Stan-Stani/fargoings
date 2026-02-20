@@ -1,4 +1,5 @@
 import { createElement, Moon, Sun, SunMoon } from "lucide"
+import L from "leaflet"
 
 type EventItem = {
   title: string
@@ -10,7 +11,11 @@ type EventItem = {
   source: string
   url: string
   altUrl: string | null
+  latitude: number | null
+  longitude: number | null
 }
+
+type ViewMode = "list" | "map"
 
 type EventsResponse = {
   items: EventItem[]
@@ -35,8 +40,12 @@ let hasMore = false
 let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
 let currentItems: EventItem[] = []
+let allItemsForMap: EventItem[] = []
 let lastRenderedDate = ""
 let isLoading = false
+let viewMode: ViewMode = "list"
+let mapInstance: L.Map | null = null
+let mapMarkers: L.LayerGroup | null = null
 
 const rowsEl = document.getElementById("rows") as HTMLTableSectionElement
 const metaEl = document.getElementById("meta") as HTMLDivElement
@@ -57,6 +66,15 @@ const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
 const tableWrapEl = document.querySelector(
   ".table-wrap",
 ) as HTMLDivElement | null
+const viewToggleBtn = document.getElementById(
+  "viewToggleBtn",
+) as HTMLButtonElement
+const tableWrapContainerEl = document.getElementById(
+  "tableWrapContainer",
+) as HTMLDivElement
+const mapContainerEl = document.getElementById(
+  "mapContainer",
+) as HTMLDivElement
 const categoryFilterEl = document.getElementById(
   "categoryFilter",
 ) as HTMLSelectElement
@@ -273,6 +291,89 @@ function toggleTimeSort(): void {
   updateDateSortHeader()
   page = 1
   load("replace")
+}
+
+function initMap(): void {
+  if (mapInstance) return
+  mapInstance = L.map("mapContainer").setView([46.877, -96.789], 12)
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(mapInstance)
+  mapMarkers = L.layerGroup().addTo(mapInstance)
+}
+
+function renderMap(items: EventItem[]): void {
+  if (!mapInstance || !mapMarkers) return
+  mapMarkers.clearLayers()
+
+  const mappable = items.filter(
+    (item) => item.latitude != null && item.longitude != null,
+  )
+
+  for (const item of mappable) {
+    const lat = item.latitude as number
+    const lng = item.longitude as number
+    const dateStr = formatDate(item.date, item.startTime)
+    const popup = `
+      <strong>${item.title}</strong><br>
+      ${dateStr}<br>
+      ${item.location ? `${item.location}<br>` : ""}
+      <a href="${item.url}" target="_blank" rel="noreferrer noopener">View event</a>
+    `
+    L.marker([lat, lng]).bindPopup(popup).addTo(mapMarkers)
+  }
+
+  if (mappable.length > 0 && mapInstance) {
+    const group = L.featureGroup(
+      mappable.map((item) =>
+        L.marker([item.latitude as number, item.longitude as number]),
+      ),
+    )
+    mapInstance.fitBounds(group.getBounds().pad(0.1))
+  }
+}
+
+function setViewMode(mode: ViewMode): void {
+  viewMode = mode
+  viewToggleBtn.textContent = mode === "list" ? "Map view" : "List view"
+  viewToggleBtn.setAttribute(
+    "aria-label",
+    mode === "list" ? "Switch to map view" : "Switch to list view",
+  )
+
+  if (mode === "map") {
+    tableWrapContainerEl.style.display = "none"
+    mapContainerEl.style.display = "block"
+    initMap()
+    // Fetch all items (unpaginated) for map
+    loadAllForMap()
+  } else {
+    mapContainerEl.style.display = "none"
+    tableWrapContainerEl.style.display = "block"
+  }
+}
+
+async function loadAllForMap(): Promise<void> {
+  const params = new URLSearchParams({
+    page: "1",
+    pageSize: "500",
+    sort: timeSortDir,
+  })
+  if (query) params.set("q", query)
+  if (categoryFilter) params.set("category", categoryFilter)
+  if (datePreset && datePreset !== "all") params.set("preset", datePreset)
+
+  try {
+    const response = await fetch(apiPath + "?" + params.toString())
+    if (!response.ok) return
+    const data = (await response.json()) as EventsResponse
+    allItemsForMap = data.items || []
+    renderMap(allItemsForMap)
+  } catch {
+    // map stays empty
+  }
 }
 
 function toggleCategorySortWithinDay(): void {
@@ -633,6 +734,10 @@ async function populateCategoryFilter(): Promise<void> {
     // non-critical; filter just stays as "All categories"
   }
 }
+
+viewToggleBtn.addEventListener("click", () => {
+  setViewMode(viewMode === "list" ? "map" : "list")
+})
 
 updateCategorySortHeader()
 updateDateSortHeader()

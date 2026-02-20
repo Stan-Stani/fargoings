@@ -416,6 +416,21 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      #mapContainer {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      #tableWrapContainer {
+        display: contents;
+      }
+      .view-toggle-btn {
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
       .pagination {
         margin-top: 10px;
         display: flex;
@@ -712,7 +727,17 @@
             Sort by category
           </button>
         </div>
+        <button
+          id="viewToggleBtn"
+          class="view-toggle-btn"
+          type="button"
+          aria-label="Switch to map view"
+        >
+          Map view
+        </button>
       </div>
+      <div id="mapContainer"></div>
+      <div id="tableWrapContainer">
       <div class="table-wrap">
         <table>
           <thead>
@@ -727,11 +752,17 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
+      </div>
       <div class="pagination">
         <button id="loadMoreBtn" type="button">Load more</button>
       </div>
     </div>
 
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
+
