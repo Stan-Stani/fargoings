@@ -2,6 +2,7 @@ import { EventDatabase } from "./db/database"
 import { findMatches } from "./dedup/matcher"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
+import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 
@@ -26,6 +27,7 @@ async function main() {
     db.deleteEventsBySource("fargounderground.com")
     db.deleteEventsBySource("downtownfargo.com")
     db.deleteEventsBySource("westfargoevents.com")
+    db.deleteEventsBySource("fargolibrary.org")
     console.log("   Cleared existing events\n")
 
     // Fetch fargomoorhead.org
@@ -68,20 +70,40 @@ async function main() {
     db.setSourceLastUpdatedDate("westfargoevents.com", today)
     console.log(`✓ Stored ${westFargoEvents.length} events\n`)
 
+    // Fetch fargolibrary.org
+    console.log("📥 Fetching fargolibrary.org...")
+    const fargoLibraryFetcher = new FargoLibraryFetcher()
+    const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
+    for (const event of fargoLibraryEvents) {
+      db.insertEvent(fargoLibraryFetcher.transformToStoredEvent(event))
+    }
+    db.setSourceLastUpdatedDate("fargolibrary.org", today)
+    console.log(`✓ Stored ${fargoLibraryEvents.length} events\n`)
+
+    // Enrich events with known venue locations where data is missing
+    const enrichedCount = db.enrichVenueLocations()
+    if (enrichedCount > 0) {
+      console.log(`🏛️  Enriched ${enrichedCount} events with known venue locations\n`)
+    }
+
     // Rebuild dedup matches across all source pairs
     console.log("🔍 Rebuilding duplicate matches...")
     const fargoStored = db.getEventsBySource("fargomoorhead.org")
     const undergroundStored = db.getEventsBySource("fargounderground.com")
     const downtownStored = db.getEventsBySource("downtownfargo.com")
     const westFargoStored = db.getEventsBySource("westfargoevents.com")
+    const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
       ...findMatches(fargoStored, westFargoStored, 0.65),
+      ...findMatches(fargoStored, fargoLibraryStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
       ...findMatches(downtownStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, westFargoStored, 0.65),
+      ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
+      ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
     ]
 
     db.clearMatches()
