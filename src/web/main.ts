@@ -207,8 +207,6 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   sourceChip.rel = "noreferrer noopener"
   sourceChip.title = url
 
-  // Use the label as the favicon domain — it's the canonical source name and
-  // may differ from the URL host (e.g. fargolibrary.org events link to fargond.gov)
   const faviconDomain = label.includes(".") ? label : getHostFromUrl(url)
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
