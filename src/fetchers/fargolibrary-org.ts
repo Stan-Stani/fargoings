@@ -3,6 +3,7 @@ import { DEFAULT_BROWSER_HEADERS, getDateRangeInTimeZone } from "./shared"
 
 interface FargoLibraryEvent {
   _id: string
+  sIndex: number
   title: string
   datetime: string // ISO 8601 UTC, e.g. "2026-02-19T16:00:00.000Z"
   displaytimeframestart: string // "10:00 am"
@@ -14,8 +15,8 @@ interface FargoLibraryEvent {
 
 export class FargoLibraryFetcher {
   private readonly baseUrl = "https://fargond.gov/programdata"
-  private readonly eventUrl =
-    "https://fargond.gov/city-government/departments/library/calendar-of-events"
+  private readonly eventDetailBase =
+    "https://fargond.gov/city-government/departments/library/calendar-of-events/event-detail"
   private readonly timeZone = "America/Chicago"
 
   async fetchEvents(daysAhead: number = 14): Promise<FargoLibraryEvent[]> {
@@ -80,10 +81,12 @@ export class FargoLibraryFetcher {
 
     const categories = event.tags.map((tag) => ({ catName: tag, catId: tag }))
 
+    const url = `${this.eventDetailBase}?id=${event._id}&index=${event.sIndex}`
+
     return {
       eventId: `fpl_${event._id}`,
       title: event.title,
-      url: this.eventUrl,
+      url,
       location,
       date: localDateStr,
       startTime,
