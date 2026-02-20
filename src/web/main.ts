@@ -28,6 +28,7 @@ const pageSize = 50
 let page = 1
 let query = ""
 let categoryFilter = ""
+let datePreset = "all"
 let totalPages = 1
 let hasMore = false
 let sortByCategoryWithinDay = false
@@ -459,6 +460,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   })
   if (query) params.set("q", query)
   if (categoryFilter) params.set("category", categoryFilter)
+  if (datePreset && datePreset !== "all") params.set("preset", datePreset)
 
   try {
     const response = await fetch(apiPath + "?" + params.toString())
@@ -572,6 +574,28 @@ categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault()
     toggleCategorySortWithinDay()
   }
+})
+
+const presetBtns = document.querySelectorAll<HTMLButtonElement>(
+  ".preset-btn[data-preset]",
+)
+
+function setDatePreset(preset: string): void {
+  datePreset = preset
+  presetBtns.forEach((btn) => {
+    btn.setAttribute(
+      "aria-pressed",
+      btn.dataset.preset === preset ? "true" : "false",
+    )
+  })
+  page = 1
+  load("replace")
+}
+
+presetBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setDatePreset(btn.dataset.preset ?? "all")
+  })
 })
 
 categoryFilterEl.addEventListener("change", () => {

@@ -537,14 +537,25 @@ export class EventDatabase {
     offset: number,
     sortDir: "asc" | "desc" = "asc",
     category: string = "",
+    dateFrom: string = "",
+    dateTo: string = "",
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
     const normalizedCategory = category.trim().toLowerCase()
     const dir = sortDir === "desc" ? "DESC" : "ASC"
     const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
 
+    // dateFrom defaults to today (never show past events)
+    const effectiveDateFrom =
+      dateFrom && dateFrom >= todayInFargo ? dateFrom : todayInFargo
+
     const conditions: string[] = ["date >= ?"]
-    const params: unknown[] = [todayInFargo]
+    const params: unknown[] = [effectiveDateFrom]
+
+    if (dateTo) {
+      conditions.push("date <= ?")
+      params.push(dateTo)
+    }
 
     if (normalizedQuery) {
       const likeParam = `%${normalizedQuery}%`

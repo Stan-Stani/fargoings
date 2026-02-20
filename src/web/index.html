@@ -160,6 +160,23 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
+      }
+      .preset-btns {
+        display: flex;
+        gap: 4px;
+        flex-wrap: nowrap;
+      }
+      .preset-btn {
+        padding: 5px 12px;
+        font-size: 13px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .preset-btn[aria-pressed="true"] {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
       }
       select {
         padding: 6px 10px;
@@ -663,6 +680,12 @@
           <button id="clearBtn">Clear</button>
         </div>
         <div class="filter-row">
+          <div class="preset-btns" role="group" aria-label="Date range">
+            <button class="preset-btn" data-preset="all" aria-pressed="true" type="button">All</button>
+            <button class="preset-btn" data-preset="today" aria-pressed="false" type="button">Today</button>
+            <button class="preset-btn" data-preset="weekend" aria-pressed="false" type="button">This Weekend</button>
+            <button class="preset-btn" data-preset="week" aria-pressed="false" type="button">This Week</button>
+          </div>
           <select id="categoryFilter" aria-label="Filter by category">
             <option value="">All categories</option>
           </select>

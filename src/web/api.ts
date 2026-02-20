@@ -6,6 +6,61 @@ import { decodeHtmlEntities } from "../dedup/normalize"
 
 const PORT = Number(process.env.API_PORT || 8788)
 
+function getCurrentDateChicago(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(
+    new Date(),
+  )
+}
+
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + days))
+  return dt.toISOString().slice(0, 10)
+}
+
+/** Returns YYYY-MM-DD for the coming Saturday (or today if today is Saturday) */
+function comingSaturday(today: string): string {
+  const [y, m, d] = today.split("-").map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const dow = dt.getUTCDay() // 0=Sun,6=Sat
+  const daysUntilSat = dow === 6 ? 0 : (6 - dow + 7) % 7 || 7
+  return addDays(today, daysUntilSat)
+}
+
+/** Returns YYYY-MM-DD for the coming Sunday (end of the same weekend) */
+function comingSunday(saturday: string): string {
+  return addDays(saturday, 1)
+}
+
+/** Returns YYYY-MM-DD for the Sunday ending the current week */
+function endOfWeekSunday(today: string): string {
+  const [y, m, d] = today.split("-").map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const dow = dt.getUTCDay()
+  const daysUntilSun = dow === 0 ? 0 : 7 - dow
+  return addDays(today, daysUntilSun)
+}
+
+function resolveDateRange(
+  preset: string,
+  rawFrom: string,
+  rawTo: string,
+): { dateFrom: string; dateTo: string } {
+  const today = getCurrentDateChicago()
+  if (preset === "today") {
+    return { dateFrom: today, dateTo: today }
+  }
+  if (preset === "weekend") {
+    const sat = comingSaturday(today)
+    return { dateFrom: sat, dateTo: comingSunday(sat) }
+  }
+  if (preset === "week") {
+    return { dateFrom: today, dateTo: endOfWeekSunday(today) }
+  }
+  // "all" or no preset — just pass through raw values (empty = no upper bound)
+  return { dateFrom: rawFrom, dateTo: rawTo }
+}
+
 function toPositiveInt(value: string | null, fallback: number): number {
   if (!value) {
     return fallback
@@ -94,12 +149,19 @@ async function main() {
       const sortDir =
         requestUrl.searchParams.get("sort") === "desc" ? "desc" : "asc"
 
+      const preset = requestUrl.searchParams.get("preset") || ""
+      const rawFrom = requestUrl.searchParams.get("dateFrom") || ""
+      const rawTo = requestUrl.searchParams.get("dateTo") || ""
+      const { dateFrom, dateTo } = resolveDateRange(preset, rawFrom, rawTo)
+
       const result = db.queryDisplayEvents(
         query,
         pageSize,
         offset,
         sortDir,
         category,
+        dateFrom,
+        dateTo,
       )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
