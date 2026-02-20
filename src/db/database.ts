@@ -1,5 +1,6 @@
 import Database from "better-sqlite3"
 import { StoredEvent } from "../types/event"
+import { VENUE_RULES } from "../enrichment/venues"
 
 export interface EventMatch {
   id: number
@@ -561,6 +562,50 @@ export class EventDatabase {
     ).count
 
     return { rows, total }
+  }
+
+  /**
+   * For events where location is null, check if the title matches a known
+   * venue rule and backfill location/city/coords in the events table.
+   * Returns the number of rows updated.
+   */
+  enrichVenueLocations(): number {
+    const nullLocationEvents = this.db
+      .prepare(
+        "SELECT eventId, title FROM events WHERE location IS NULL OR location = ''",
+      )
+      .all() as { eventId: string; title: string }[]
+
+    const updateStmt = this.db.prepare(`
+      UPDATE events
+      SET location = @location,
+          city = @city,
+          latitude = @latitude,
+          longitude = @longitude,
+          updatedAt = CURRENT_TIMESTAMP
+      WHERE eventId = @eventId
+    `)
+
+    let count = 0
+    const transaction = this.db.transaction(() => {
+      for (const row of nullLocationEvents) {
+        for (const rule of VENUE_RULES) {
+          if (rule.titlePattern.test(row.title)) {
+            updateStmt.run({
+              location: rule.location,
+              city: rule.city,
+              latitude: rule.latitude,
+              longitude: rule.longitude,
+              eventId: row.eventId,
+            })
+            count++
+            break
+          }
+        }
+      }
+    })
+    transaction()
+    return count
   }
 
   close() {

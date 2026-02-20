@@ -138,6 +138,12 @@ async function main() {
       console.log(`✓ Processed ${westFargoInserted} events\n`)
     }
 
+    // Enrich events with known venue locations where data is missing
+    const enrichedCount = db.enrichVenueLocations()
+    if (enrichedCount > 0) {
+      console.log(`🏛️  Enriched ${enrichedCount} events with known venue locations\n`)
+    }
+
     // Deduplicate events across all sources
     console.log("🔍 Finding duplicate events...")
     const fargoStored = db.getEventsBySource("fargomoorhead.org")
