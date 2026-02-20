@@ -4,6 +4,7 @@ import { findMatches } from "./dedup/matcher"
 import { decodeHtmlEntities } from "./dedup/normalize"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
+import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 
@@ -22,6 +23,7 @@ async function main() {
   const undergroundFetcher = new FargoUndergroundFetcher()
   const downtownFetcher = new DowntownFargoFetcher()
   const westFargoFetcher = new WestFargoEventsFetcher()
+  const fargoLibraryFetcher = new FargoLibraryFetcher()
 
   try {
     const today = getLocalDateString(new Date())
@@ -33,13 +35,17 @@ async function main() {
     const westFargoLastUpdated = db.getSourceLastUpdatedDate(
       "westfargoevents.com",
     )
+    const fargoLibraryLastUpdated = db.getSourceLastUpdatedDate(
+      "fargolibrary.org",
+    )
     const freshCount = [
       fargoLastUpdated,
       undergroundLastUpdated,
       downtownLastUpdated,
       westFargoLastUpdated,
+      fargoLibraryLastUpdated,
     ].filter((date) => date === today).length
-    const staleCount = 4 - freshCount
+    const staleCount = 5 - freshCount
     console.log(`🧊 Cache status: ${freshCount} fresh, ${staleCount} stale`)
 
     // Fetch from fargomoorhead.org
@@ -138,6 +144,30 @@ async function main() {
       console.log(`✓ Processed ${westFargoInserted} events\n`)
     }
 
+    // Fetch from fargolibrary.org
+    console.log(
+      `   fargolibrary.org cache date: ${fargoLibraryLastUpdated || "never"} (today: ${today})`,
+    )
+    if (fargoLibraryLastUpdated === today) {
+      console.log("⏭️  Using cached fargolibrary.org events (fresh today).\n")
+    } else {
+      console.log(
+        "📥 Fetching events from fargolibrary.org (next 2 weeks)...",
+      )
+      const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
+      console.log(`✓ Fetched ${fargoLibraryEvents.length} events\n`)
+
+      console.log("💾 Storing fargolibrary.org events...")
+      let fargoLibraryInserted = 0
+      for (const event of fargoLibraryEvents) {
+        const storedEvent = fargoLibraryFetcher.transformToStoredEvent(event)
+        db.insertEvent(storedEvent)
+        fargoLibraryInserted++
+      }
+      db.setSourceLastUpdatedDate("fargolibrary.org", today)
+      console.log(`✓ Processed ${fargoLibraryInserted} events\n`)
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -151,14 +181,19 @@ async function main() {
     const downtownStored = db.getEventsBySource("downtownfargo.com")
     const westFargoStored = db.getEventsBySource("westfargoevents.com")
 
+    const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
+
     // Find matches between all source pairs
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
       ...findMatches(fargoStored, westFargoStored, 0.65),
+      ...findMatches(fargoStored, fargoLibraryStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
       ...findMatches(downtownStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, westFargoStored, 0.65),
+      ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
+      ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
     ]
 
     db.clearMatches()
