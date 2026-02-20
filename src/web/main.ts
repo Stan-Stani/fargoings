@@ -207,10 +207,12 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   sourceChip.rel = "noreferrer noopener"
   sourceChip.title = url
 
-  const sourceHost = getHostFromUrl(url)
+  // Use the label as the favicon domain — it's the canonical source name and
+  // may differ from the URL host (e.g. fargolibrary.org events link to fargond.gov)
+  const faviconDomain = label.includes(".") ? label : getHostFromUrl(url)
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
-  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(sourceHost)}`
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(faviconDomain)}`
   sourceFavicon.alt = ""
   sourceFavicon.loading = "lazy"
   sourceFavicon.decoding = "async"
@@ -225,13 +227,15 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   return sourceChip
 }
 
-function createSourceIconLink(url: string): HTMLAnchorElement {
+function createSourceIconLink(url: string, source?: string): HTMLAnchorElement {
   const sourceIconLink = document.createElement("a")
   sourceIconLink.className = "source-icon-link"
   sourceIconLink.href = url
   sourceIconLink.target = "_blank"
   sourceIconLink.rel = "noreferrer noopener"
-  sourceIconLink.title = formatSourceHostLabel(getHostFromUrl(url))
+  const faviconDomain =
+    source && source.includes(".") ? source : getHostFromUrl(url)
+  sourceIconLink.title = formatSourceHostLabel(faviconDomain)
   sourceIconLink.setAttribute(
     "aria-label",
     `Open source: ${sourceIconLink.title}`,
@@ -239,7 +243,7 @@ function createSourceIconLink(url: string): HTMLAnchorElement {
 
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
-  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(getHostFromUrl(url))}`
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(faviconDomain)}`
   sourceFavicon.alt = ""
   sourceFavicon.loading = "lazy"
   sourceFavicon.decoding = "async"
@@ -516,7 +520,7 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
 
     const sourceIconsInline = document.createElement("div")
     sourceIconsInline.className = "source-icons-inline"
-    sourceIconsInline.appendChild(createSourceIconLink(item.url))
+    sourceIconsInline.appendChild(createSourceIconLink(item.url, item.source))
     if (item.altUrl) {
       sourceIconsInline.appendChild(createSourceIconLink(item.altUrl))
     }
