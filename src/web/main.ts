@@ -5,6 +5,7 @@ type EventItem = {
   date: string
   startTime: string | null
   location: string | null
+  city: string | null
   categories: string | null
   source: string
   url: string
@@ -385,7 +386,20 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
     const locationTd = document.createElement("td")
     locationTd.setAttribute("data-label", "Location")
     locationTd.className = "location-cell"
-    locationTd.textContent = item.location || "N/A"
+    if (item.location) {
+      const mapsQuery = encodeURIComponent(
+        item.city ? `${item.location}, ${item.city}` : item.location,
+      )
+      const locationLink = document.createElement("a")
+      locationLink.href = `https://maps.google.com/?q=${mapsQuery}`
+      locationLink.target = "_blank"
+      locationLink.rel = "noreferrer noopener"
+      locationLink.textContent = item.location
+      locationLink.className = "location-link"
+      locationTd.appendChild(locationLink)
+    } else {
+      locationTd.textContent = "N/A"
+    }
 
     const categoryTd = document.createElement("td")
     categoryTd.setAttribute("data-label", "Category")
