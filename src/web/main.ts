@@ -1,5 +1,5 @@
 import L from "leaflet"
-import { createElement, Moon, SlidersHorizontal, Sun, SunMoon } from "lucide"
+import { createElement, Moon, SlidersHorizontal, Sun, SunMoon, X } from "lucide"
 
 type EventItem = {
   title: string
@@ -98,22 +98,52 @@ const themeToggleBtn = document.getElementById(
 ) as HTMLButtonElement
 const themeStorageKey = "themePreference"
 
+filtersCloseBtnEl?.replaceChildren(
+  createElement(X, {
+    width: 16,
+    height: 16,
+    "aria-hidden": "true",
+    focusable: "false",
+  }),
+)
+
+filtersToggleBtnEl?.replaceChildren(
+  createElement(SlidersHorizontal, {
+    width: 16,
+    height: 16,
+    "aria-hidden": "true",
+    focusable: "false",
+  }),
+)
+
+function hasActiveFilters(): boolean {
+  return (
+    Boolean(query) ||
+    Boolean(categoryFilter) ||
+    (datePreset !== "all" && datePreset !== "") ||
+    sortByCategoryWithinDay
+  )
+}
+
+function syncFiltersToggleButtonState(): void {
+  if (!filtersToggleBtnEl) return
+
+  const active = hasActiveFilters()
+  filtersToggleBtnEl.dataset.activeFilters = active ? "true" : "false"
+
+  const isOpen = filtersMenuEl ? filtersMenuEl.dataset.open !== "false" : false
+  const baseLabel = isOpen ? "Close filters" : "Open filters"
+  const label = active ? `${baseLabel} (active)` : baseLabel
+  filtersToggleBtnEl.setAttribute("aria-label", label)
+  filtersToggleBtnEl.title = label
+}
+
 function setFiltersMenuOpen(isOpen: boolean): void {
   if (!filtersMenuEl || !filtersToggleBtnEl) return
   filtersMenuEl.dataset.open = isOpen ? "true" : "false"
   filtersToggleBtnEl.setAttribute("aria-expanded", isOpen ? "true" : "false")
 
-  const label = isOpen ? "Close filters" : "Open filters"
-  filtersToggleBtnEl.setAttribute("aria-label", label)
-  filtersToggleBtnEl.title = label
-  filtersToggleBtnEl.replaceChildren(
-    createElement(SlidersHorizontal, {
-      width: 16,
-      height: 16,
-      "aria-hidden": "true",
-      focusable: "false",
-    }),
-  )
+  syncFiltersToggleButtonState()
 }
 
 function syncFiltersMenuToViewport(): void {
@@ -188,6 +218,7 @@ themeToggleBtn.addEventListener("click", () => {
 if (filtersToggleBtnEl && filtersMenuEl) {
   // Default: closed on mobile, open on desktop.
   syncFiltersMenuToViewport()
+  syncFiltersToggleButtonState()
 
   filtersToggleBtnEl.addEventListener("click", () => {
     const currentlyOpen = filtersMenuEl.dataset.open !== "false"
@@ -461,6 +492,7 @@ function setViewMode(mode: ViewMode): void {
 function toggleCategorySortWithinDay(): void {
   sortByCategoryWithinDay = !sortByCategoryWithinDay
   updateCategorySortHeader()
+  syncFiltersToggleButtonState()
   renderRows(sortItemsByCategoryWithinDay(currentItems))
 }
 
@@ -732,6 +764,7 @@ loadMoreBtn.addEventListener("click", () => {
 
 searchBtn.addEventListener("click", () => {
   query = searchInput.value.trim()
+  syncFiltersToggleButtonState()
   page = 1
   load("replace")
 })
@@ -741,6 +774,7 @@ clearBtn.addEventListener("click", () => {
   query = ""
   categoryFilter = ""
   categoryFilterEl.value = ""
+  syncFiltersToggleButtonState()
   page = 1
   load("replace")
 })
@@ -791,6 +825,7 @@ const presetBtns = document.querySelectorAll<HTMLButtonElement>(
 
 function setDatePreset(preset: string): void {
   datePreset = preset
+  syncFiltersToggleButtonState()
   presetBtns.forEach((btn) => {
     btn.setAttribute(
       "aria-pressed",
@@ -809,6 +844,7 @@ presetBtns.forEach((btn) => {
 
 categoryFilterEl.addEventListener("change", () => {
   categoryFilter = categoryFilterEl.value
+  syncFiltersToggleButtonState()
   page = 1
   load("replace")
 })

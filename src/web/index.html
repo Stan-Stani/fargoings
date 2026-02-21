@@ -289,6 +289,7 @@
         height: 30px;
         min-width: 30px;
         padding: 0;
+        position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -300,6 +301,16 @@
       /* The filters toggle is an icon button; keep it hidden on desktop. */
       .icon-btn.filters-toggle-btn {
         display: none;
+      }
+      .icon-btn.filters-toggle-btn[data-active-filters="true"]::after {
+        content: "";
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: currentColor;
       }
       .mobile-sort-btn {
         width: 100%;
@@ -793,7 +804,6 @@
               aria-label="Close filters"
               title="Close filters"
             >
-              Close
             </button>
           </div>
           <div class="filter-row">
