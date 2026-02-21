@@ -1,4 +1,10 @@
-import { createElement, Moon, Sun, SunMoon } from "lucide"
+import {
+  createElement,
+  Moon,
+  SlidersHorizontal,
+  Sun,
+  SunMoon,
+} from "lucide"
 import L from "leaflet"
 
 type EventItem = {
@@ -77,6 +83,15 @@ const tableWrapEl = document.querySelector(
 const viewToggleBtn = document.getElementById(
   "viewToggleBtn",
 ) as HTMLButtonElement
+const filtersToggleBtnEl = document.getElementById(
+  "filtersToggleBtn",
+) as HTMLButtonElement | null
+const filtersMenuEl = document.getElementById(
+  "filtersMenu",
+) as HTMLDivElement | null
+const filtersCloseBtnEl = document.getElementById(
+  "filtersCloseBtn",
+) as HTMLButtonElement | null
 const tableWrapContainerEl = document.getElementById(
   "tableWrapContainer",
 ) as HTMLDivElement
@@ -90,6 +105,30 @@ const themeToggleBtn = document.getElementById(
   "themeToggle",
 ) as HTMLButtonElement
 const themeStorageKey = "themePreference"
+
+function setFiltersMenuOpen(isOpen: boolean): void {
+  if (!filtersMenuEl || !filtersToggleBtnEl) return
+  filtersMenuEl.dataset.open = isOpen ? "true" : "false"
+  filtersToggleBtnEl.setAttribute("aria-expanded", isOpen ? "true" : "false")
+
+  const label = isOpen ? "Close filters" : "Open filters"
+  filtersToggleBtnEl.setAttribute("aria-label", label)
+  filtersToggleBtnEl.title = label
+  filtersToggleBtnEl.replaceChildren(
+    createElement(SlidersHorizontal, {
+      width: 16,
+      height: 16,
+      "aria-hidden": "true",
+      focusable: "false",
+    }),
+  )
+}
+
+function syncFiltersMenuToViewport(): void {
+  if (!filtersMenuEl || !filtersToggleBtnEl) return
+  const isMobile = window.matchMedia("(max-width: 640px)").matches
+  setFiltersMenuOpen(!isMobile)
+}
 
 function getStoredThemePreference(): ThemePreference {
   const stored = localStorage.getItem(themeStorageKey)
@@ -153,6 +192,34 @@ themeToggleBtn.addEventListener("click", () => {
   themePreference = cycleThemePreference(themePreference)
   setThemePreference(themePreference)
 })
+
+if (filtersToggleBtnEl && filtersMenuEl) {
+  // Default: closed on mobile, open on desktop.
+  syncFiltersMenuToViewport()
+
+  filtersToggleBtnEl.addEventListener("click", () => {
+    const currentlyOpen = filtersMenuEl.dataset.open !== "false"
+    setFiltersMenuOpen(!currentlyOpen)
+  })
+
+  const mobileMq = window.matchMedia("(max-width: 640px)")
+  mobileMq.addEventListener("change", () => {
+    // Keep desktop consistent (always open). On mobile we default to closed.
+    syncFiltersMenuToViewport()
+  })
+
+  filtersCloseBtnEl?.addEventListener("click", () => {
+    setFiltersMenuOpen(false)
+    filtersToggleBtnEl.focus()
+  })
+
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return
+    if (filtersMenuEl.dataset.open === "false") return
+    setFiltersMenuOpen(false)
+    filtersToggleBtnEl.focus()
+  })
+}
 
 function formatDate(date: string, time: string | null): string {
   const [year, month, day] = date.split("-").map(Number)

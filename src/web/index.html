@@ -162,6 +162,19 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+      .filters-toggle-btn {
+        display: none;
+        white-space: nowrap;
+      }
+      .filters-menu {
+        display: block;
+      }
+      .filters-modal-header {
+        display: none;
+      }
+      .filters-modal-title {
+        font-weight: 700;
+      }
       .preset-btns {
         display: flex;
         gap: 4px;
@@ -261,9 +274,32 @@
         flex-wrap: wrap;
         margin-bottom: 12px;
       }
+      .meta-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
       .mobile-sort-wrap {
         display: none;
         margin-bottom: 10px;
+      }
+      .icon-btn {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .icon-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+      /* The filters toggle is an icon button; keep it hidden on desktop. */
+      .icon-btn.filters-toggle-btn {
+        display: none;
       }
       .mobile-sort-btn {
         width: 100%;
@@ -504,6 +540,47 @@
           display: block;
           margin-bottom: 8px;
         }
+        .icon-btn.filters-toggle-btn {
+          display: inline-flex;
+        }
+        .filters-menu {
+          position: fixed;
+          inset: 0;
+          z-index: 50;
+          background: var(--bg);
+          margin-top: 0;
+          padding: 12px;
+          overflow: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .filters-menu[data-open="false"] {
+          display: none;
+        }
+        .filters-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--border-soft);
+        }
+        .filter-row {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 8px;
+        }
+        .preset-btns {
+          width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 2px;
+        }
+        select {
+          max-width: none;
+          width: 100%;
+        }
         .search-group {
           width: 100%;
         }
@@ -528,7 +605,6 @@
         .mobile-sort-wrap {
           display: block;
           margin-bottom: 0;
-          flex: 0 0 auto;
         }
         .mobile-sort-btn {
           width: auto;
@@ -708,38 +784,62 @@
           <button id="searchBtn">Search</button>
           <button id="clearBtn">Clear</button>
         </div>
-        <div class="filter-row">
-          <div class="preset-btns" role="group" aria-label="Date range">
-            <button class="preset-btn" data-preset="all" aria-pressed="true" type="button">All</button>
-            <button class="preset-btn" data-preset="today" aria-pressed="false" type="button">Today</button>
-            <button class="preset-btn" data-preset="weekend" aria-pressed="false" type="button">This Weekend</button>
-            <button class="preset-btn" data-preset="week" aria-pressed="false" type="button">This Week</button>
+        <div id="filtersMenu" class="filters-menu" data-open="true">
+          <div class="filters-modal-header">
+            <div class="filters-modal-title">Filters</div>
+            <button
+              id="filtersCloseBtn"
+              class="icon-btn"
+              type="button"
+              aria-label="Close filters"
+              title="Close filters"
+            >
+              Close
+            </button>
           </div>
-          <select id="categoryFilter" aria-label="Filter by category">
-            <option value="">All categories</option>
-          </select>
+          <div class="filter-row">
+            <div class="preset-btns" role="group" aria-label="Date range">
+              <button class="preset-btn" data-preset="all" aria-pressed="true" type="button">All</button>
+              <button class="preset-btn" data-preset="today" aria-pressed="false" type="button">Today</button>
+              <button class="preset-btn" data-preset="weekend" aria-pressed="false" type="button">This Weekend</button>
+              <button class="preset-btn" data-preset="week" aria-pressed="false" type="button">This Week</button>
+            </div>
+            <select id="categoryFilter" aria-label="Filter by category">
+              <option value="">All categories</option>
+            </select>
+            <div class="mobile-sort-wrap">
+              <button
+                id="mobileCategorySortBtn"
+                class="mobile-sort-btn"
+                type="button"
+                aria-label="Toggle category sorting within each day"
+                aria-pressed="false"
+              >
+                Category sort: Off
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="meta-row">
         <div id="meta" class="meta">Loading…</div>
-        <div class="mobile-sort-wrap">
+        <div class="meta-actions">
           <button
-            id="mobileCategorySortBtn"
-            class="mobile-sort-btn"
+            id="filtersToggleBtn"
+            class="icon-btn filters-toggle-btn"
             type="button"
-            aria-label="Toggle category sorting within each day"
+            aria-controls="filtersMenu"
+            aria-expanded="false"
+          ></button>
+          <button
+            id="viewToggleBtn"
+            class="view-toggle-btn"
+            type="button"
+            aria-label="Switch to map view"
           >
-            Sort by category
+            Map view
           </button>
         </div>
-        <button
-          id="viewToggleBtn"
-          class="view-toggle-btn"
-          type="button"
-          aria-label="Switch to map view"
-        >
-          Map view
-        </button>
       </div>
       <div id="mapContainer"></div>
       <div id="tableWrapContainer">
