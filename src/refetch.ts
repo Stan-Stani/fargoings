@@ -1,10 +1,11 @@
 import { EventDatabase } from "./db/database"
 import { findMatches } from "./dedup/matcher"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
-import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
+import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
+import { logError } from "./log"
 
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear()
@@ -23,67 +24,104 @@ async function main() {
 
     // Clear all events and matches
     db.clearMatches()
-    db.deleteEventsBySource("fargomoorhead.org")
-    db.deleteEventsBySource("fargounderground.com")
-    db.deleteEventsBySource("downtownfargo.com")
-    db.deleteEventsBySource("westfargoevents.com")
-    db.deleteEventsBySource("fargolibrary.org")
-    console.log("   Cleared existing events\n")
+    console.log("   Cleared existing matches\n")
 
     // Fetch fargomoorhead.org
     console.log("📥 Fetching fargomoorhead.org...")
-    const fargoFetcher = new FargoFetcher()
-    const fargoEvents = await fargoFetcher.fetchEvents()
-    for (const event of fargoEvents) {
-      db.insertEvent(fargoFetcher.transformToStoredEvent(event))
+    try {
+      const fargoFetcher = new FargoFetcher()
+      const fargoEvents = await fargoFetcher.fetchEvents()
+      db.deleteEventsBySource("fargomoorhead.org")
+      for (const event of fargoEvents) {
+        db.insertEvent(fargoFetcher.transformToStoredEvent(event))
+      }
+      db.setSourceLastUpdatedDate("fargomoorhead.org", today)
+      console.log(`✓ Stored ${fargoEvents.length} events\n`)
+    } catch (error) {
+      logError("❌ fargomoorhead.org refetch failed:", error)
+      console.log(
+        "⚠️  Keeping existing fargomoorhead.org events (no delete performed).\n",
+      )
     }
-    db.setSourceLastUpdatedDate("fargomoorhead.org", today)
-    console.log(`✓ Stored ${fargoEvents.length} events\n`)
 
     // Fetch fargounderground.com
     console.log("📥 Fetching fargounderground.com...")
-    const undergroundFetcher = new FargoUndergroundFetcher()
-    const undergroundEvents = await undergroundFetcher.fetchEvents()
-    for (const event of undergroundEvents) {
-      db.insertEvent(undergroundFetcher.transformToStoredEvent(event))
+    try {
+      const undergroundFetcher = new FargoUndergroundFetcher()
+      const undergroundEvents = await undergroundFetcher.fetchEvents()
+      db.deleteEventsBySource("fargounderground.com")
+      for (const event of undergroundEvents) {
+        db.insertEvent(undergroundFetcher.transformToStoredEvent(event))
+      }
+      db.setSourceLastUpdatedDate("fargounderground.com", today)
+      console.log(`✓ Stored ${undergroundEvents.length} events\n`)
+    } catch (error) {
+      logError("❌ fargounderground.com refetch failed:", error)
+      console.log(
+        "⚠️  Keeping existing fargounderground.com events (no delete performed).\n",
+      )
     }
-    db.setSourceLastUpdatedDate("fargounderground.com", today)
-    console.log(`✓ Stored ${undergroundEvents.length} events\n`)
 
     // Fetch downtownfargo.com
     console.log("📥 Fetching downtownfargo.com...")
-    const downtownFetcher = new DowntownFargoFetcher()
-    const downtownEvents = await downtownFetcher.fetchEvents(14)
-    for (const event of downtownEvents) {
-      db.insertEvent(downtownFetcher.transformToStoredEvent(event))
+    try {
+      const downtownFetcher = new DowntownFargoFetcher()
+      const downtownEvents = await downtownFetcher.fetchEvents(14)
+      db.deleteEventsBySource("downtownfargo.com")
+      for (const event of downtownEvents) {
+        db.insertEvent(downtownFetcher.transformToStoredEvent(event))
+      }
+      db.setSourceLastUpdatedDate("downtownfargo.com", today)
+      console.log(`✓ Stored ${downtownEvents.length} events\n`)
+    } catch (error) {
+      logError("❌ downtownfargo.com refetch failed:", error)
+      console.log(
+        "⚠️  Keeping existing downtownfargo.com events (no delete performed).\n",
+      )
     }
-    db.setSourceLastUpdatedDate("downtownfargo.com", today)
-    console.log(`✓ Stored ${downtownEvents.length} events\n`)
 
     // Fetch westfargoevents.com
     console.log("📥 Fetching westfargoevents.com...")
-    const westFargoFetcher = new WestFargoEventsFetcher()
-    const westFargoEvents = await westFargoFetcher.fetchEvents()
-    for (const event of westFargoEvents) {
-      db.insertEvent(westFargoFetcher.transformToStoredEvent(event))
+    try {
+      const westFargoFetcher = new WestFargoEventsFetcher()
+      const westFargoEvents = await westFargoFetcher.fetchEvents()
+      db.deleteEventsBySource("westfargoevents.com")
+      for (const event of westFargoEvents) {
+        db.insertEvent(westFargoFetcher.transformToStoredEvent(event))
+      }
+      db.setSourceLastUpdatedDate("westfargoevents.com", today)
+      console.log(`✓ Stored ${westFargoEvents.length} events\n`)
+    } catch (error) {
+      logError("❌ westfargoevents.com refetch failed:", error)
+      console.log(
+        "⚠️  Keeping existing westfargoevents.com events (no delete performed).\n",
+      )
     }
-    db.setSourceLastUpdatedDate("westfargoevents.com", today)
-    console.log(`✓ Stored ${westFargoEvents.length} events\n`)
 
-    // Fetch fargolibrary.org
+    // Fetch fargolibrary.org (non-fatal if it 504s)
     console.log("📥 Fetching fargolibrary.org...")
-    const fargoLibraryFetcher = new FargoLibraryFetcher()
-    const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
-    for (const event of fargoLibraryEvents) {
-      db.insertEvent(fargoLibraryFetcher.transformToStoredEvent(event))
+    try {
+      const fargoLibraryFetcher = new FargoLibraryFetcher()
+      const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
+      db.deleteEventsBySource("fargolibrary.org")
+      for (const event of fargoLibraryEvents) {
+        db.insertEvent(fargoLibraryFetcher.transformToStoredEvent(event))
+      }
+      db.setSourceLastUpdatedDate("fargolibrary.org", today)
+      console.log(`✓ Stored ${fargoLibraryEvents.length} events\n`)
+    } catch (error) {
+      logError("❌ fargolibrary.org refetch failed:", error)
+      console.log(
+        "⚠️  Keeping existing fargolibrary.org events (no delete performed).\n",
+      )
     }
-    db.setSourceLastUpdatedDate("fargolibrary.org", today)
-    console.log(`✓ Stored ${fargoLibraryEvents.length} events\n`)
 
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
-      console.log(`🏛️  Enriched ${enrichedCount} events with known venue locations\n`)
+      console.log(
+        `🏛️  Enriched ${enrichedCount} events with known venue locations\n`,
+      )
     }
 
     // Rebuild dedup matches across all source pairs

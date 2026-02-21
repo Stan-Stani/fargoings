@@ -3,10 +3,11 @@ import { EventDatabase } from "./db/database"
 import { findMatches } from "./dedup/matcher"
 import { decodeHtmlEntities } from "./dedup/normalize"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
-import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
+import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
+import { logError } from "./log"
 
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear()
@@ -35,9 +36,8 @@ async function main() {
     const westFargoLastUpdated = db.getSourceLastUpdatedDate(
       "westfargoevents.com",
     )
-    const fargoLibraryLastUpdated = db.getSourceLastUpdatedDate(
-      "fargolibrary.org",
-    )
+    const fargoLibraryLastUpdated =
+      db.getSourceLastUpdatedDate("fargolibrary.org")
     const freshCount = [
       fargoLastUpdated,
       undergroundLastUpdated,
@@ -55,19 +55,28 @@ async function main() {
     if (fargoLastUpdated === today) {
       console.log("⏭️  Using cached fargomoorhead.org events (fresh today).\n")
     } else {
-      console.log("📥 Fetching events from fargomoorhead.org (next 2 weeks)...")
-      const fargoEvents = await fargoFetcher.fetchEvents()
-      console.log(`✓ Fetched ${fargoEvents.length} events\n`)
+      try {
+        console.log(
+          "📥 Fetching events from fargomoorhead.org (next 2 weeks)...",
+        )
+        const fargoEvents = await fargoFetcher.fetchEvents()
+        console.log(`✓ Fetched ${fargoEvents.length} events\n`)
 
-      console.log("💾 Storing fargomoorhead.org events...")
-      let fargoInserted = 0
-      for (const event of fargoEvents) {
-        const storedEvent = fargoFetcher.transformToStoredEvent(event)
-        db.insertEvent(storedEvent)
-        fargoInserted++
+        console.log("💾 Storing fargomoorhead.org events...")
+        let fargoInserted = 0
+        for (const event of fargoEvents) {
+          const storedEvent = fargoFetcher.transformToStoredEvent(event)
+          db.insertEvent(storedEvent)
+          fargoInserted++
+        }
+        db.setSourceLastUpdatedDate("fargomoorhead.org", today)
+        console.log(`✓ Processed ${fargoInserted} events\n`)
+      } catch (error) {
+        logError("❌ fargomoorhead.org fetch failed:", error)
+        console.log(
+          "⚠️  Skipping fargomoorhead.org refresh; keeping existing cached events.\n",
+        )
       }
-      db.setSourceLastUpdatedDate("fargomoorhead.org", today)
-      console.log(`✓ Processed ${fargoInserted} events\n`)
     }
 
     // Fetch from fargounderground.com
@@ -79,21 +88,28 @@ async function main() {
         "⏭️  Using cached fargounderground.com events (fresh today).\n",
       )
     } else {
-      console.log(
-        "📥 Fetching events from fargounderground.com (next 2 weeks)...",
-      )
-      const undergroundEvents = await undergroundFetcher.fetchEvents()
-      console.log(`✓ Fetched ${undergroundEvents.length} events\n`)
+      try {
+        console.log(
+          "📥 Fetching events from fargounderground.com (next 2 weeks)...",
+        )
+        const undergroundEvents = await undergroundFetcher.fetchEvents()
+        console.log(`✓ Fetched ${undergroundEvents.length} events\n`)
 
-      console.log("💾 Storing fargounderground.com events...")
-      let undergroundInserted = 0
-      for (const event of undergroundEvents) {
-        const storedEvent = undergroundFetcher.transformToStoredEvent(event)
-        db.insertEvent(storedEvent)
-        undergroundInserted++
+        console.log("💾 Storing fargounderground.com events...")
+        let undergroundInserted = 0
+        for (const event of undergroundEvents) {
+          const storedEvent = undergroundFetcher.transformToStoredEvent(event)
+          db.insertEvent(storedEvent)
+          undergroundInserted++
+        }
+        db.setSourceLastUpdatedDate("fargounderground.com", today)
+        console.log(`✓ Processed ${undergroundInserted} events\n`)
+      } catch (error) {
+        logError("❌ fargounderground.com fetch failed:", error)
+        console.log(
+          "⚠️  Skipping fargounderground.com refresh; keeping existing cached events.\n",
+        )
       }
-      db.setSourceLastUpdatedDate("fargounderground.com", today)
-      console.log(`✓ Processed ${undergroundInserted} events\n`)
     }
 
     // Fetch from downtownfargo.com
@@ -103,19 +119,28 @@ async function main() {
     if (downtownLastUpdated === today) {
       console.log("⏭️  Using cached downtownfargo.com events (fresh today).\n")
     } else {
-      console.log("📥 Fetching events from downtownfargo.com (next 2 weeks)...")
-      const downtownEvents = await downtownFetcher.fetchEvents(14)
-      console.log(`✓ Fetched ${downtownEvents.length} events\n`)
+      try {
+        console.log(
+          "📥 Fetching events from downtownfargo.com (next 2 weeks)...",
+        )
+        const downtownEvents = await downtownFetcher.fetchEvents(14)
+        console.log(`✓ Fetched ${downtownEvents.length} events\n`)
 
-      console.log("💾 Storing downtownfargo.com events...")
-      let downtownInserted = 0
-      for (const event of downtownEvents) {
-        const storedEvent = downtownFetcher.transformToStoredEvent(event)
-        db.insertEvent(storedEvent)
-        downtownInserted++
+        console.log("💾 Storing downtownfargo.com events...")
+        let downtownInserted = 0
+        for (const event of downtownEvents) {
+          const storedEvent = downtownFetcher.transformToStoredEvent(event)
+          db.insertEvent(storedEvent)
+          downtownInserted++
+        }
+        db.setSourceLastUpdatedDate("downtownfargo.com", today)
+        console.log(`✓ Processed ${downtownInserted} events\n`)
+      } catch (error) {
+        logError("❌ downtownfargo.com fetch failed:", error)
+        console.log(
+          "⚠️  Skipping downtownfargo.com refresh; keeping existing cached events.\n",
+        )
       }
-      db.setSourceLastUpdatedDate("downtownfargo.com", today)
-      console.log(`✓ Processed ${downtownInserted} events\n`)
     }
 
     // Fetch from westfargoevents.com
@@ -127,21 +152,28 @@ async function main() {
         "⏭️  Using cached westfargoevents.com events (fresh today).\n",
       )
     } else {
-      console.log(
-        "📥 Fetching events from westfargoevents.com (next 2 weeks)...",
-      )
-      const westFargoEvents = await westFargoFetcher.fetchEvents()
-      console.log(`✓ Fetched ${westFargoEvents.length} events\n`)
+      try {
+        console.log(
+          "📥 Fetching events from westfargoevents.com (next 2 weeks)...",
+        )
+        const westFargoEvents = await westFargoFetcher.fetchEvents()
+        console.log(`✓ Fetched ${westFargoEvents.length} events\n`)
 
-      console.log("💾 Storing westfargoevents.com events...")
-      let westFargoInserted = 0
-      for (const event of westFargoEvents) {
-        const storedEvent = westFargoFetcher.transformToStoredEvent(event)
-        db.insertEvent(storedEvent)
-        westFargoInserted++
+        console.log("💾 Storing westfargoevents.com events...")
+        let westFargoInserted = 0
+        for (const event of westFargoEvents) {
+          const storedEvent = westFargoFetcher.transformToStoredEvent(event)
+          db.insertEvent(storedEvent)
+          westFargoInserted++
+        }
+        db.setSourceLastUpdatedDate("westfargoevents.com", today)
+        console.log(`✓ Processed ${westFargoInserted} events\n`)
+      } catch (error) {
+        logError("❌ westfargoevents.com fetch failed:", error)
+        console.log(
+          "⚠️  Skipping westfargoevents.com refresh; keeping existing cached events.\n",
+        )
       }
-      db.setSourceLastUpdatedDate("westfargoevents.com", today)
-      console.log(`✓ Processed ${westFargoInserted} events\n`)
     }
 
     // Fetch from fargolibrary.org
@@ -151,27 +183,36 @@ async function main() {
     if (fargoLibraryLastUpdated === today) {
       console.log("⏭️  Using cached fargolibrary.org events (fresh today).\n")
     } else {
-      console.log(
-        "📥 Fetching events from fargolibrary.org (next 2 weeks)...",
-      )
-      const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
-      console.log(`✓ Fetched ${fargoLibraryEvents.length} events\n`)
+      try {
+        console.log(
+          "📥 Fetching events from fargolibrary.org (next 2 weeks)...",
+        )
+        const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
+        console.log(`✓ Fetched ${fargoLibraryEvents.length} events\n`)
 
-      console.log("💾 Storing fargolibrary.org events...")
-      let fargoLibraryInserted = 0
-      for (const event of fargoLibraryEvents) {
-        const storedEvent = fargoLibraryFetcher.transformToStoredEvent(event)
-        db.insertEvent(storedEvent)
-        fargoLibraryInserted++
+        console.log("💾 Storing fargolibrary.org events...")
+        let fargoLibraryInserted = 0
+        for (const event of fargoLibraryEvents) {
+          const storedEvent = fargoLibraryFetcher.transformToStoredEvent(event)
+          db.insertEvent(storedEvent)
+          fargoLibraryInserted++
+        }
+        db.setSourceLastUpdatedDate("fargolibrary.org", today)
+        console.log(`✓ Processed ${fargoLibraryInserted} events\n`)
+      } catch (error) {
+        logError("❌ fargolibrary.org fetch failed:", error)
+        console.log(
+          "⚠️  Skipping fargolibrary.org refresh; keeping existing cached events.\n",
+        )
       }
-      db.setSourceLastUpdatedDate("fargolibrary.org", today)
-      console.log(`✓ Processed ${fargoLibraryInserted} events\n`)
     }
 
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
-      console.log(`🏛️  Enriched ${enrichedCount} events with known venue locations\n`)
+      console.log(
+        `🏛️  Enriched ${enrichedCount} events with known venue locations\n`,
+      )
     }
 
     // Deduplicate events across all sources

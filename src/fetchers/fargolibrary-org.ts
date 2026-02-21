@@ -1,5 +1,10 @@
+import { logError } from "../log"
 import { StoredEvent } from "../types/event"
-import { DEFAULT_BROWSER_HEADERS, getDateRangeInTimeZone } from "./shared"
+import {
+  DEFAULT_BROWSER_HEADERS,
+  fetchWithRetry,
+  getDateRangeInTimeZone,
+} from "./shared"
 
 interface FargoLibraryEvent {
   _id: string
@@ -20,41 +25,54 @@ export class FargoLibraryFetcher {
   private readonly timeZone = "America/Chicago"
 
   async fetchEvents(daysAhead: number = 14): Promise<FargoLibraryEvent[]> {
-    const dateRange = getDateRangeInTimeZone(daysAhead, this.timeZone)
-
-    console.log(
-      `   Date range (${this.timeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
-    )
-
-    const allEvents: FargoLibraryEvent[] = []
-    let page = 1
-    const pageSize = 100
-
-    while (true) {
-      const url = `${this.baseUrl}?api=lem&datefrom=${dateRange.startDateStr}&dateto=${dateRange.endDateStr}&page=${page}&pageSize=${pageSize}`
-
-      const response = await fetch(url, { headers: DEFAULT_BROWSER_HEADERS })
-      if (!response.ok) {
-        throw new Error(
-          `Fargo Library events fetch failed: HTTP ${response.status}`,
-        )
-      }
-
-      const events = (await response.json()) as FargoLibraryEvent[]
-      if (!Array.isArray(events) || events.length === 0) break
-
-      const active = events.filter((e) => !e.isCancelled)
-      allEvents.push(...active)
+    try {
+      const dateRange = getDateRangeInTimeZone(daysAhead, this.timeZone)
 
       console.log(
-        `   Fetched page ${page} (${events.length} events, ${active.length} active)`,
+        `   Date range (${this.timeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
       )
 
-      if (events.length < pageSize) break
-      page++
-    }
+      const allEvents: FargoLibraryEvent[] = []
+      let page = 1
+      const pageSize = 100
 
-    return allEvents
+      while (true) {
+        const url = `${this.baseUrl}?api=lem&datefrom=${dateRange.startDateStr}&dateto=${dateRange.endDateStr}&page=${page}&pageSize=${pageSize}`
+
+        const response = await fetchWithRetry(
+          url,
+          { headers: DEFAULT_BROWSER_HEADERS },
+          `Fargo Library events (page ${page})`,
+          4,
+        )
+
+        const contentType = response.headers.get("content-type") ?? ""
+        if (!contentType.includes("application/json")) {
+          const bodyPreview = (await response.text()).slice(0, 500)
+          throw new Error(
+            `Fargo Library events fetch returned non-JSON content for ${url} (page ${page}). Content-Type: ${contentType}. Body preview: ${bodyPreview}`,
+          )
+        }
+
+        const events = (await response.json()) as FargoLibraryEvent[]
+        if (!Array.isArray(events) || events.length === 0) break
+
+        const active = events.filter((e) => !e.isCancelled)
+        allEvents.push(...active)
+
+        console.log(
+          `   Fetched page ${page} (${events.length} events, ${active.length} active)`,
+        )
+
+        if (events.length < pageSize) break
+        page++
+      }
+
+      return allEvents
+    } catch (error) {
+      logError("Error fetching Fargo Library events:", error)
+      throw error
+    }
   }
 
   transformToStoredEvent(
