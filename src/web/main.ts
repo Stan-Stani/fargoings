@@ -1,11 +1,5 @@
-import {
-  createElement,
-  Moon,
-  SlidersHorizontal,
-  Sun,
-  SunMoon,
-} from "lucide"
 import L from "leaflet"
+import { createElement, Moon, SlidersHorizontal, Sun, SunMoon } from "lucide"
 
 type EventItem = {
   title: string
@@ -95,9 +89,7 @@ const filtersCloseBtnEl = document.getElementById(
 const tableWrapContainerEl = document.getElementById(
   "tableWrapContainer",
 ) as HTMLDivElement
-const mapContainerEl = document.getElementById(
-  "mapContainer",
-) as HTMLDivElement
+const mapContainerEl = document.getElementById("mapContainer") as HTMLDivElement
 const categoryFilterEl = document.getElementById(
   "categoryFilter",
 ) as HTMLSelectElement
@@ -416,10 +408,11 @@ function renderMap(items: EventItem[]): void {
   if (mappable.length > 1) {
     const bounds = L.latLngBounds(
       mappable.map(
-        (item) => [item.latitude as number, item.longitude as number] as [
-          number,
-          number,
-        ],
+        (item) =>
+          [item.latitude as number, item.longitude as number] as [
+            number,
+            number,
+          ],
       ),
     )
 

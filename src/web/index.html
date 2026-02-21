@@ -737,7 +737,6 @@
           gap: 6px;
           align-items: center;
           padding-bottom: env(safe-area-inset-bottom);
-
         }
         .pagination button {
           width: 100%;
@@ -799,10 +798,38 @@
           </div>
           <div class="filter-row">
             <div class="preset-btns" role="group" aria-label="Date range">
-              <button class="preset-btn" data-preset="all" aria-pressed="true" type="button">All</button>
-              <button class="preset-btn" data-preset="today" aria-pressed="false" type="button">Today</button>
-              <button class="preset-btn" data-preset="weekend" aria-pressed="false" type="button">This Weekend</button>
-              <button class="preset-btn" data-preset="week" aria-pressed="false" type="button">This Week</button>
+              <button
+                class="preset-btn"
+                data-preset="all"
+                aria-pressed="true"
+                type="button"
+              >
+                All
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="today"
+                aria-pressed="false"
+                type="button"
+              >
+                Today
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="weekend"
+                aria-pressed="false"
+                type="button"
+              >
+                This Weekend
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="week"
+                aria-pressed="false"
+                type="button"
+              >
+                This Week
+              </button>
             </div>
             <select id="categoryFilter" aria-label="Filter by category">
               <option value="">All categories</option>
@@ -843,20 +870,20 @@
       </div>
       <div id="mapContainer"></div>
       <div id="tableWrapContainer">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th id="dateSortHeader">Date ▲</th>
-              <th>Location</th>
-              <th id="categorySortHeader">Category</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th id="dateSortHeader">Date ▲</th>
+                <th>Location</th>
+                <th id="categorySortHeader">Category</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
       </div>
       <div class="pagination">
         <button id="loadMoreBtn" type="button">Load more</button>
@@ -870,4 +897,3 @@
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
-
