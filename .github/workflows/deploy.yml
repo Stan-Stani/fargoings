@@ -23,7 +23,8 @@ jobs:
             git reset --hard origin/main
 
             echo "Deployed commit: $(git rev-parse --short HEAD)"
-            echo "package.json version: $(node -p \"require('./package.json').version\")"
+            VERSION=$(node -p "require('./package.json').version")
+            echo "package.json version: ${VERSION}"
 
             npm ci
             npm run web:build
