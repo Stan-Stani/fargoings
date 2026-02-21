@@ -1,5 +1,6 @@
 name: Deploy to VPS
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["Auto Bump Patch Version"]
     types: [completed]
@@ -16,12 +17,45 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -euo pipefail
             cd /root/fargoings
             git fetch origin
             git reset --hard origin/main
+
+            echo "Deployed commit: $(git rev-parse --short HEAD)"
+            echo "package.json version: $(node -p \"require('./package.json').version\")"
+
             npm ci
             npm run web:build
+
+            # Ensure old processes aren't still holding the ports (screen names can drift).
+            for port in 8787 8788; do
+              pid=$(ss -lptn "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n 1 || true)
+              if [ -n "${pid}" ]; then
+                echo "Killing PID ${pid} on port ${port}"
+                kill "${pid}" 2>/dev/null || true
+                sleep 1
+                kill -9 "${pid}" 2>/dev/null || true
+              fi
+            done
+
             screen -S fargoings -X quit 2>/dev/null || true
             screen -S fargoings-api -X quit 2>/dev/null || true
             cd /root/fargoings && screen -dmS fargoings npm run web:prod
-            exit 0
+
+            # Smoke-test: verify the server is actually responding.
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8788/health >/dev/null 2>&1; then
+                break
+              fi
+              sleep 1
+            done
+            curl -fsS http://127.0.0.1:8788/health
+
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8787/fargoings/ >/dev/null 2>&1; then
+                break
+              fi
+              sleep 1
+            done
+            curl -fsS http://127.0.0.1:8787/fargoings/ >/dev/null
