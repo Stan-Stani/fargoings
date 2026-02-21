@@ -1,5 +1,6 @@
 import L from "leaflet"
 import { createElement, Moon, SlidersHorizontal, Sun, SunMoon, X } from "lucide"
+import { decode } from "he"
 
 type EventItem = {
   title: string
@@ -857,7 +858,8 @@ async function populateCategoryFilter(): Promise<void> {
     for (const cat of data.categories) {
       const opt = document.createElement("option")
       opt.value = cat
-      opt.textContent = cat
+      // Keep raw value for filtering (matches DB), but decode for display.
+      opt.textContent = decode(cat)
       categoryFilterEl.appendChild(opt)
     }
   } catch {
