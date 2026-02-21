@@ -17,6 +17,7 @@
     "dedup": "tsx src/dedup.ts",
     "search": "tsx src/search.ts",
     "refetch": "tsx src/refetch.ts",
+    "refetch:underground": "tsx src/refetch.ts --source fargounderground.com",
     "build": "tsc",
     "dev": "tsx watch src/index.ts"
   },

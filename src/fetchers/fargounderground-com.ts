@@ -1,17 +1,47 @@
+import { VENUE_RULES } from "../enrichment/venues"
 import { FargoUndergroundEvent, StoredEvent } from "../types/event"
-import { DEFAULT_BROWSER_HEADERS, fetchTribeEvents } from "./shared"
+import {
+  DEFAULT_BROWSER_HEADERS,
+  fetchTribeEvents,
+  fetchWithRetry,
+} from "./shared"
+
+type InferredVenue = {
+  location: string
+  city: string
+  latitude: number
+  longitude: number
+}
+
+type EnrichedFargoUndergroundEvent = FargoUndergroundEvent & {
+  inferredVenue?: InferredVenue
+}
 
 export class FargoUndergroundFetcher {
   private readonly clientTimeZone = "America/Chicago"
   private readonly baseUrl =
     "https://fargounderground.com/wp-json/tribe/events/v1/events"
 
+  private readonly paradoxVenue: InferredVenue | null = (() => {
+    const rule = VENUE_RULES.find((r) => /paradox/i.test(r.location))
+    if (!rule) {
+      return null
+    }
+
+    return {
+      location: rule.location,
+      city: rule.city,
+      latitude: rule.latitude,
+      longitude: rule.longitude,
+    }
+  })()
+
   async fetchEvents(
     perPage: number = 100,
     daysAhead: number = 14,
-  ): Promise<FargoUndergroundEvent[]> {
+  ): Promise<EnrichedFargoUndergroundEvent[]> {
     try {
-      return await fetchTribeEvents<FargoUndergroundEvent>({
+      const events = await fetchTribeEvents<FargoUndergroundEvent>({
         baseUrl: this.baseUrl,
         label: "Fargo Underground events fetch",
         timeZone: this.clientTimeZone,
@@ -19,26 +49,152 @@ export class FargoUndergroundFetcher {
         daysAhead,
         headers: DEFAULT_BROWSER_HEADERS,
       })
+
+      const enriched = events as EnrichedFargoUndergroundEvent[]
+      await this.enrichMissingVenues(enriched)
+      return enriched
     } catch (error) {
       console.error("Error fetching Fargo Underground events:", error)
       throw error
     }
   }
 
+  private async enrichMissingVenues(
+    events: EnrichedFargoUndergroundEvent[],
+  ): Promise<void> {
+    if (!this.paradoxVenue) {
+      return
+    }
+
+    const candidates = events.filter(
+      (e) => (!e.venue || !e.venue.venue) && !!e.url,
+    )
+    if (candidates.length === 0) {
+      return
+    }
+
+    await this.mapWithConcurrency(candidates, 4, async (event) => {
+      const inferred = await this.inferVenueFromInfoAndTickets(event.url)
+      if (inferred) {
+        event.inferredVenue = inferred
+      }
+    })
+  }
+
+  private async inferVenueFromInfoAndTickets(
+    eventUrl: string,
+  ): Promise<InferredVenue | null> {
+    if (!this.paradoxVenue) {
+      return null
+    }
+
+    let eventHtml: string
+    try {
+      const response = await fetchWithRetry(
+        eventUrl,
+        { headers: DEFAULT_BROWSER_HEADERS },
+        "Fargo Underground event page fetch",
+      )
+      eventHtml = await response.text()
+    } catch {
+      return null
+    }
+
+    // If the event page itself mentions Paradox, treat it as a Paradox-hosted event.
+    if (/paradox/i.test(eventHtml)) {
+      return this.paradoxVenue
+    }
+
+    const infoTicketsUrl = this.extractInfoAndTicketsUrl(eventHtml, eventUrl)
+    if (!infoTicketsUrl) {
+      return null
+    }
+
+    // Many Paradox-hosted events link directly to paradoxcnc.com.
+    if (/paradox/i.test(infoTicketsUrl)) {
+      return this.paradoxVenue
+    }
+
+    try {
+      const response = await fetchWithRetry(
+        infoTicketsUrl,
+        { headers: DEFAULT_BROWSER_HEADERS },
+        "Info & Tickets page fetch",
+      )
+      const infoHtml = await response.text()
+      if (/paradox/i.test(infoHtml)) {
+        return this.paradoxVenue
+      }
+    } catch {
+      // Non-fatal; leave venue unknown.
+    }
+
+    return null
+  }
+
+  private extractInfoAndTicketsUrl(html: string, baseUrl: string): string | null {
+    // Try to find the “INFO & TICKETS” link in the event details sidebar.
+    // Handles either “&” or “&amp;” in HTML.
+    const re =
+      /<a\b[^>]*href=["']([^"']+)["'][^>]*>\s*INFO\s*(?:&|&amp;)\s*TICKETS\s*<\/a>/i
+    const match = html.match(re)
+    const href = match?.[1]?.trim()
+    if (!href) {
+      return null
+    }
+
+    try {
+      return new URL(href, baseUrl).toString()
+    } catch {
+      return null
+    }
+  }
+
+  private async mapWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<void>,
+  ): Promise<void> {
+    const limit = Math.max(1, Math.floor(concurrency))
+    for (let i = 0; i < items.length; i += limit) {
+      const slice = items.slice(i, i + limit)
+      await Promise.all(slice.map((item) => fn(item)))
+    }
+  }
+
   transformToStoredEvent(
-    event: FargoUndergroundEvent,
+    event: EnrichedFargoUndergroundEvent,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
     // Parse start time from start_date (format: "2026-02-13 09:00:00")
     const startTimeParts = event.start_date.split(" ")
     const startTime = startTimeParts.length > 1 ? startTimeParts[1] : null
 
-    // Build location string from venue
+    // Build location string from venue (or inferred venue when missing)
     let location: string | null = null
-    if (event.venue) {
-      location = event.venue.venue
-      if (event.venue.address) {
-        location += `, ${event.venue.address}`
+    let latitude: number | null = null
+    let longitude: number | null = null
+    let city: string | null = null
+
+    const venueName = event.venue?.venue?.trim()
+    const hasUsableVenueName = !!venueName
+
+    if (hasUsableVenueName) {
+      location = venueName
+
+      const venueAddress = event.venue?.address?.trim()
+      if (venueAddress) {
+        location += `, ${venueAddress}`
       }
+
+      latitude = Number.isFinite(event.venue?.geo_lat) ? event.venue!.geo_lat : null
+      longitude =
+        Number.isFinite(event.venue?.geo_lng) ? event.venue!.geo_lng : null
+      city = event.venue?.city?.trim() || null
+    } else if (event.inferredVenue) {
+      location = event.inferredVenue.location
+      latitude = event.inferredVenue.latitude
+      longitude = event.inferredVenue.longitude
+      city = event.inferredVenue.city
     }
 
     // Transform categories to match our format
@@ -56,9 +212,9 @@ export class FargoUndergroundFetcher {
       startTime,
       startDate: event.start_date.split(" ")[0],
       endDate: event.end_date.split(" ")[0],
-      latitude: event.venue?.geo_lat || null,
-      longitude: event.venue?.geo_lng || null,
-      city: event.venue?.city || null,
+      latitude,
+      longitude,
+      city,
       imageUrl: event.image?.url || null,
       categories: JSON.stringify(categories),
       source: "fargounderground.com",
