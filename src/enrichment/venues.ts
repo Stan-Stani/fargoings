@@ -1,0 +1,28 @@
+/**
+ * Known venue enrichment rules.
+ *
+ * When an event has no location data but its title matches a known venue,
+ * we can backfill the location, city, and coordinates.
+ *
+ * Paradox Comics & Games is the primary case: they post events to
+ * fargounderground.com without venue details attached.
+ */
+
+export interface VenueRule {
+  /** Regex tested against the event title (case-insensitive) */
+  titlePattern: RegExp
+  location: string
+  city: string
+  latitude: number
+  longitude: number
+}
+
+export const VENUE_RULES: VenueRule[] = [
+  {
+    titlePattern: /paradox/i,
+    location: "Paradox Comics & Games, 403 Main Ave N",
+    city: "Fargo",
+    latitude: 46.8772,
+    longitude: -96.7898,
+  },
+]

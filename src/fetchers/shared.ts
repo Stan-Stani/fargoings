@@ -125,20 +125,24 @@ export async function fetchWithRetry(
 
       if (!shouldRetry || attempt === maxAttempts) {
         throw new Error(
-          `${label} failed: HTTP ${response.status}. Body preview: ${bodyPreview}`,
+          `${label} failed for ${url}: HTTP ${response.status}. Body preview: ${bodyPreview}`,
         )
       }
 
       console.warn(
-        `⚠️ ${label} attempt ${attempt}/${maxAttempts} failed with ${response.status}; retrying...`,
+        `⚠️ ${label} attempt ${attempt}/${maxAttempts} failed with ${response.status} for ${url}; retrying...`,
       )
     } catch (error) {
       lastError = error
       if (attempt === maxAttempts) {
-        throw error
+        if (error instanceof Error && error.message.includes(url)) {
+          throw error
+        }
+
+        throw new Error(`${label} errored for ${url}`, { cause: error })
       }
       console.warn(
-        `⚠️ ${label} attempt ${attempt}/${maxAttempts} errored; retrying...`,
+        `⚠️ ${label} attempt ${attempt}/${maxAttempts} errored for ${url}; retrying...`,
         error,
       )
     }
@@ -146,9 +150,18 @@ export async function fetchWithRetry(
     await new Promise((resolve) => setTimeout(resolve, attempt * 750))
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`${label} failed after retries`)
+  if (lastError instanceof Error) {
+    if (lastError.message.includes(url)) {
+      throw lastError
+    }
+    throw new Error(`${label} failed for ${url} after retries`, {
+      cause: lastError,
+    })
+  }
+
+  throw new Error(`${label} failed for ${url} after retries`, {
+    cause: lastError,
+  })
 }
 
 export interface TribeEventsApiResponse<TEvent> {

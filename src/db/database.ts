@@ -1,5 +1,6 @@
 import Database from "better-sqlite3"
 import { StoredEvent } from "../types/event"
+import { VENUE_RULES } from "../enrichment/venues"
 
 export interface EventMatch {
   id: number
@@ -25,6 +26,8 @@ export interface DisplayEvent {
   imageUrl: string | null
   categories: string
   source: string
+  latitude: number | null
+  longitude: number | null
   createdAt: string
   updatedAt: string
 }
@@ -105,6 +108,8 @@ export class EventDatabase {
         imageUrl TEXT,
         categories TEXT,
         source TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
         updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -112,6 +117,18 @@ export class EventDatabase {
       CREATE INDEX IF NOT EXISTS idx_display_events_date ON display_events(date);
       CREATE INDEX IF NOT EXISTS idx_display_events_source ON display_events(source);
     `)
+
+    // Migrate existing display_events tables that predate the latitude/longitude columns
+    const cols = (
+      this.db.prepare("PRAGMA table_info(display_events)").all() as {
+        name: string
+      }[]
+    ).map((c) => c.name)
+    if (!cols.includes("latitude")) {
+      this.db.exec(
+        "ALTER TABLE display_events ADD COLUMN latitude REAL; ALTER TABLE display_events ADD COLUMN longitude REAL;",
+      )
+    }
   }
 
   private normalizeDate(date: string): string {
@@ -446,8 +463,8 @@ export class EventDatabase {
 
     const deleteStmt = this.db.prepare("DELETE FROM display_events")
     const insertStmt = this.db.prepare(`
-      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source)
-      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source)
+      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude)
+      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source, @latitude, @longitude)
     `)
 
     const transaction = this.db.transaction(() => {
@@ -465,6 +482,8 @@ export class EventDatabase {
           imageUrl: event.imageUrl,
           categories: event.categories,
           source: event.source,
+          latitude: event.latitude ?? null,
+          longitude: event.longitude ?? null,
         })
       }
     })
@@ -473,15 +492,53 @@ export class EventDatabase {
     return deduplicatedEvents.length
   }
 
-  getDisplayEvents(limit: number = 100, offset: number = 0): DisplayEvent[] {
+  getDisplayEvents(
+    limit: number = 100,
+    offset: number = 0,
+    sortDir: "asc" | "desc" = "asc",
+  ): DisplayEvent[] {
+    const dir = sortDir === "desc" ? "DESC" : "ASC"
     const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
     const stmt = this.db.prepare(`
       SELECT * FROM display_events
       WHERE date >= ?
-      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
+      ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}
       LIMIT ? OFFSET ?
     `)
     return stmt.all(todayInFargo, limit, offset) as DisplayEvent[]
+  }
+
+  getDistinctCategories(): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT DISTINCT categories FROM display_events WHERE categories IS NOT NULL AND categories != '[]'",
+      )
+      .all() as { categories: string }[]
+
+    const names = new Set<string>()
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.categories) as unknown
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item === "object") {
+              const rec = item as Record<string, unknown>
+              if (typeof rec.catName === "string" && rec.catName) {
+                names.add(rec.catName)
+              }
+            } else if (typeof item === "string" && item) {
+              names.add(item)
+            }
+          }
+        }
+      } catch {
+        // skip unparseable rows
+      }
+    }
+
+    return Array.from(names).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    )
   }
 
   getDisplayCount(): number {
@@ -496,71 +553,107 @@ export class EventDatabase {
     searchQuery: string,
     limit: number,
     offset: number,
+    sortDir: "asc" | "desc" = "asc",
+    category: string = "",
+    dateFrom: string = "",
+    dateTo: string = "",
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
+    const normalizedCategory = category.trim().toLowerCase()
+    const dir = sortDir === "desc" ? "DESC" : "ASC"
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
 
-    if (!normalizedQuery) {
-      const rows = this.getDisplayEvents(limit, offset)
-      return {
-        rows,
-        total: this.getDisplayCount(),
-      }
+    // dateFrom defaults to today (never show past events)
+    const effectiveDateFrom =
+      dateFrom && dateFrom >= todayInFargo ? dateFrom : todayInFargo
+
+    const conditions: string[] = ["date >= ?"]
+    const params: unknown[] = [effectiveDateFrom]
+
+    if (dateTo) {
+      conditions.push("date <= ?")
+      params.push(dateTo)
     }
 
-    const likeParam = `%${normalizedQuery}%`
-
-    const whereClause = `
-      WHERE date >= ?
-        AND (
+    if (normalizedQuery) {
+      const likeParam = `%${normalizedQuery}%`
+      conditions.push(`(
              lower(title) LIKE ?
          OR lower(coalesce(location, '')) LIKE ?
          OR lower(coalesce(city, '')) LIKE ?
          OR lower(coalesce(categories, '')) LIKE ?
          OR lower(coalesce(source, '')) LIKE ?
-        )
-    `
+        )`)
+      params.push(likeParam, likeParam, likeParam, likeParam, likeParam)
+    }
 
-    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
+    if (normalizedCategory) {
+      conditions.push("lower(coalesce(categories, '')) LIKE ?")
+      params.push(`%${normalizedCategory}%`)
+    }
+
+    const whereClause = `WHERE ${conditions.join(" AND ")}`
+    const orderClause = `ORDER BY date ${dir}, COALESCE(startTime, '23:59:59') ${dir}, id ${dir}`
 
     const rows = this.db
       .prepare(
-        `
-      SELECT * FROM display_events
-      ${whereClause}
-      ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC, id ASC
-      LIMIT ? OFFSET ?
-    `,
+        `SELECT * FROM display_events ${whereClause} ${orderClause} LIMIT ? OFFSET ?`,
       )
-      .all(
-        todayInFargo,
-        likeParam,
-        likeParam,
-        likeParam,
-        likeParam,
-        likeParam,
-        limit,
-        offset,
-      ) as DisplayEvent[]
+      .all(...params, limit, offset) as DisplayEvent[]
 
     const total = (
       this.db
         .prepare(
-          `
-      SELECT COUNT(*) as count FROM display_events
-      ${whereClause}
-    `,
+          `SELECT COUNT(*) as count FROM display_events ${whereClause}`,
         )
-        .get(
-          todayInFargo,
-          likeParam,
-          likeParam,
-          likeParam,
-          likeParam,
-          likeParam,
-        ) as { count: number }
+        .get(...params) as { count: number }
     ).count
 
     return { rows, total }
+  }
+
+  /**
+   * For events where location is null, check if the title matches a known
+   * venue rule and backfill location/city/coords in the events table.
+   * Returns the number of rows updated.
+   */
+  enrichVenueLocations(): number {
+    const nullLocationEvents = this.db
+      .prepare(
+        "SELECT eventId, title FROM events WHERE location IS NULL OR location = ''",
+      )
+      .all() as { eventId: string; title: string }[]
+
+    const updateStmt = this.db.prepare(`
+      UPDATE events
+      SET location = @location,
+          city = @city,
+          latitude = @latitude,
+          longitude = @longitude,
+          updatedAt = CURRENT_TIMESTAMP
+      WHERE eventId = @eventId
+    `)
+
+    let count = 0
+    const transaction = this.db.transaction(() => {
+      for (const row of nullLocationEvents) {
+        for (const rule of VENUE_RULES) {
+          if (rule.titlePattern.test(row.title)) {
+            updateStmt.run({
+              location: rule.location,
+              city: rule.city,
+              latitude: rule.latitude,
+              longitude: rule.longitude,
+              eventId: row.eventId,
+            })
+            count++
+            break
+          }
+        }
+      }
+    })
+    transaction()
+    return count
   }
 
   close() {

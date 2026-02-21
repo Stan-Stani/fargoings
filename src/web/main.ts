@@ -1,15 +1,21 @@
-import { createElement, Moon, Sun, SunMoon } from "lucide"
+import L from "leaflet"
+import { createElement, Moon, SlidersHorizontal, Sun, SunMoon, X } from "lucide"
 
 type EventItem = {
   title: string
   date: string
   startTime: string | null
   location: string | null
+  city: string | null
   categories: string | null
   source: string
   url: string
   altUrl: string | null
+  latitude: number | null
+  longitude: number | null
 }
+
+type ViewMode = "list" | "map"
 
 type EventsResponse = {
   items: EventItem[]
@@ -27,12 +33,27 @@ const apiPath = "/api/events"
 const pageSize = 50
 let page = 1
 let query = ""
+let categoryFilter = ""
+let datePreset = "all"
 let totalPages = 1
 let hasMore = false
 let sortByCategoryWithinDay = false
+let timeSortDir: "asc" | "desc" = "asc"
 let currentItems: EventItem[] = []
 let lastRenderedDate = ""
 let isLoading = false
+let viewMode: ViewMode = "list"
+let mapInstance: L.Map | null = null
+let mapMarkers: L.LayerGroup | null = null
+
+function getInitialMapView(): { center: L.LatLngExpression; zoom: number } {
+  // Desktop feels better slightly zoomed out so Fargo + Moorhead fit comfortably.
+  const isDesktop = window.matchMedia("(min-width: 1024px)").matches
+  return {
+    center: [46.877, -96.789],
+    zoom: isDesktop ? 11 : 12,
+  }
+}
 
 const rowsEl = document.getElementById("rows") as HTMLTableSectionElement
 const metaEl = document.getElementById("meta") as HTMLDivElement
@@ -40,6 +61,9 @@ const loadMoreBtn = document.getElementById("loadMoreBtn") as HTMLButtonElement
 const searchInput = document.getElementById("search") as HTMLInputElement
 const searchBtn = document.getElementById("searchBtn") as HTMLButtonElement
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement
+const dateSortHeaderEl = document.getElementById(
+  "dateSortHeader",
+) as HTMLTableCellElement
 const categorySortHeaderEl = document.getElementById(
   "categorySortHeader",
 ) as HTMLTableCellElement
@@ -50,10 +74,83 @@ const versionBadgeEl = document.getElementById("versionBadge") as HTMLDivElement
 const tableWrapEl = document.querySelector(
   ".table-wrap",
 ) as HTMLDivElement | null
+const viewToggleBtn = document.getElementById(
+  "viewToggleBtn",
+) as HTMLButtonElement
+const filtersToggleBtnEl = document.getElementById(
+  "filtersToggleBtn",
+) as HTMLButtonElement | null
+const filtersMenuEl = document.getElementById(
+  "filtersMenu",
+) as HTMLDivElement | null
+const filtersCloseBtnEl = document.getElementById(
+  "filtersCloseBtn",
+) as HTMLButtonElement | null
+const tableWrapContainerEl = document.getElementById(
+  "tableWrapContainer",
+) as HTMLDivElement
+const mapContainerEl = document.getElementById("mapContainer") as HTMLDivElement
+const categoryFilterEl = document.getElementById(
+  "categoryFilter",
+) as HTMLSelectElement
 const themeToggleBtn = document.getElementById(
   "themeToggle",
 ) as HTMLButtonElement
 const themeStorageKey = "themePreference"
+
+filtersCloseBtnEl?.replaceChildren(
+  createElement(X, {
+    width: 16,
+    height: 16,
+    "aria-hidden": "true",
+    focusable: "false",
+  }),
+)
+
+filtersToggleBtnEl?.replaceChildren(
+  createElement(SlidersHorizontal, {
+    width: 16,
+    height: 16,
+    "aria-hidden": "true",
+    focusable: "false",
+  }),
+)
+
+function hasActiveFilters(): boolean {
+  return (
+    Boolean(query) ||
+    Boolean(categoryFilter) ||
+    (datePreset !== "all" && datePreset !== "") ||
+    sortByCategoryWithinDay
+  )
+}
+
+function syncFiltersToggleButtonState(): void {
+  if (!filtersToggleBtnEl) return
+
+  const active = hasActiveFilters()
+  filtersToggleBtnEl.dataset.activeFilters = active ? "true" : "false"
+
+  const isOpen = filtersMenuEl ? filtersMenuEl.dataset.open !== "false" : false
+  const baseLabel = isOpen ? "Close filters" : "Open filters"
+  const label = active ? `${baseLabel} (active)` : baseLabel
+  filtersToggleBtnEl.setAttribute("aria-label", label)
+  filtersToggleBtnEl.title = label
+}
+
+function setFiltersMenuOpen(isOpen: boolean): void {
+  if (!filtersMenuEl || !filtersToggleBtnEl) return
+  filtersMenuEl.dataset.open = isOpen ? "true" : "false"
+  filtersToggleBtnEl.setAttribute("aria-expanded", isOpen ? "true" : "false")
+
+  syncFiltersToggleButtonState()
+}
+
+function syncFiltersMenuToViewport(): void {
+  if (!filtersMenuEl || !filtersToggleBtnEl) return
+  const isMobile = window.matchMedia("(max-width: 640px)").matches
+  setFiltersMenuOpen(!isMobile)
+}
 
 function getStoredThemePreference(): ThemePreference {
   const stored = localStorage.getItem(themeStorageKey)
@@ -118,6 +215,35 @@ themeToggleBtn.addEventListener("click", () => {
   setThemePreference(themePreference)
 })
 
+if (filtersToggleBtnEl && filtersMenuEl) {
+  // Default: closed on mobile, open on desktop.
+  syncFiltersMenuToViewport()
+  syncFiltersToggleButtonState()
+
+  filtersToggleBtnEl.addEventListener("click", () => {
+    const currentlyOpen = filtersMenuEl.dataset.open !== "false"
+    setFiltersMenuOpen(!currentlyOpen)
+  })
+
+  const mobileMq = window.matchMedia("(max-width: 640px)")
+  mobileMq.addEventListener("change", () => {
+    // Keep desktop consistent (always open). On mobile we default to closed.
+    syncFiltersMenuToViewport()
+  })
+
+  filtersCloseBtnEl?.addEventListener("click", () => {
+    setFiltersMenuOpen(false)
+    filtersToggleBtnEl.focus()
+  })
+
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return
+    if (filtersMenuEl.dataset.open === "false") return
+    setFiltersMenuOpen(false)
+    filtersToggleBtnEl.focus()
+  })
+}
+
 function formatDate(date: string, time: string | null): string {
   const [year, month, day] = date.split("-").map(Number)
   const localDate = new Date(year, month - 1, day)
@@ -179,10 +305,10 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   sourceChip.rel = "noreferrer noopener"
   sourceChip.title = url
 
-  const sourceHost = getHostFromUrl(url)
+  const faviconDomain = label.includes(".") ? label : getHostFromUrl(url)
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
-  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(sourceHost)}`
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(faviconDomain)}`
   sourceFavicon.alt = ""
   sourceFavicon.loading = "lazy"
   sourceFavicon.decoding = "async"
@@ -197,13 +323,15 @@ function createSourceChip(url: string, label: string): HTMLAnchorElement {
   return sourceChip
 }
 
-function createSourceIconLink(url: string): HTMLAnchorElement {
+function createSourceIconLink(url: string, source?: string): HTMLAnchorElement {
   const sourceIconLink = document.createElement("a")
   sourceIconLink.className = "source-icon-link"
   sourceIconLink.href = url
   sourceIconLink.target = "_blank"
   sourceIconLink.rel = "noreferrer noopener"
-  sourceIconLink.title = formatSourceHostLabel(getHostFromUrl(url))
+  const faviconDomain =
+    source && source.includes(".") ? source : getHostFromUrl(url)
+  sourceIconLink.title = formatSourceHostLabel(faviconDomain)
   sourceIconLink.setAttribute(
     "aria-label",
     `Open source: ${sourceIconLink.title}`,
@@ -211,7 +339,7 @@ function createSourceIconLink(url: string): HTMLAnchorElement {
 
   const sourceFavicon = document.createElement("img")
   sourceFavicon.className = "source-favicon"
-  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(getHostFromUrl(url))}`
+  sourceFavicon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(faviconDomain)}`
   sourceFavicon.alt = ""
   sourceFavicon.loading = "lazy"
   sourceFavicon.decoding = "async"
@@ -247,9 +375,124 @@ function updateCategorySortHeader(): void {
   }
 }
 
+function updateDateSortHeader(): void {
+  const indicator = timeSortDir === "asc" ? "▲" : "▼"
+  const dirLabel = timeSortDir === "asc" ? "oldest first" : "newest first"
+  dateSortHeaderEl.textContent = `Date ${indicator}`
+  dateSortHeaderEl.title = `Sorted by time (${dirLabel}). Click to reverse.`
+  dateSortHeaderEl.setAttribute(
+    "aria-sort",
+    timeSortDir === "asc" ? "ascending" : "descending",
+  )
+}
+
+function toggleTimeSort(): void {
+  timeSortDir = timeSortDir === "asc" ? "desc" : "asc"
+  updateDateSortHeader()
+  page = 1
+  load("replace")
+}
+
+function initMap(): void {
+  if (mapInstance) return
+  const initial = getInitialMapView()
+  mapInstance = L.map("mapContainer").setView(initial.center, initial.zoom)
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(mapInstance)
+  mapMarkers = L.layerGroup().addTo(mapInstance)
+}
+
+function renderMap(items: EventItem[]): void {
+  if (!mapInstance || !mapMarkers) return
+  mapMarkers.clearLayers()
+
+  const mappable = items.filter(
+    (item) => item.latitude != null && item.longitude != null,
+  )
+
+  for (const item of mappable) {
+    const lat = item.latitude as number
+    const lng = item.longitude as number
+    const dateStr = formatDate(item.date, item.startTime)
+    const popup = `
+      <strong>${item.title}</strong><br>
+      ${dateStr}<br>
+      ${item.location ? `${item.location}<br>` : ""}
+      <a href="${item.url}" target="_blank" rel="noreferrer noopener">View event</a>
+    `
+    L.marker([lat, lng]).bindPopup(popup).addTo(mapMarkers)
+  }
+
+  if (mappable.length === 1) {
+    const only = mappable[0]
+    mapInstance.setView(
+      [only.latitude as number, only.longitude as number],
+      14,
+      { animate: false },
+    )
+    return
+  }
+
+  if (mappable.length > 1) {
+    const bounds = L.latLngBounds(
+      mappable.map(
+        (item) =>
+          [item.latitude as number, item.longitude as number] as [
+            number,
+            number,
+          ],
+      ),
+    )
+
+    mapInstance.fitBounds(bounds, {
+      padding: [24, 24],
+      maxZoom: 14,
+      animate: false,
+    })
+    return
+  }
+
+  const initial = getInitialMapView()
+  mapInstance.setView(initial.center, initial.zoom, { animate: false })
+}
+
+function setViewMode(mode: ViewMode): void {
+  viewMode = mode
+  viewToggleBtn.textContent = mode === "list" ? "Map view" : "List view"
+  viewToggleBtn.setAttribute(
+    "aria-label",
+    mode === "list" ? "Switch to map view" : "Switch to list view",
+  )
+
+  if (mode === "map") {
+    tableWrapContainerEl.style.display = "none"
+    mapContainerEl.style.display = "block"
+    initMap()
+    // Leaflet needs a size recalculation when the container becomes visible.
+    queueMicrotask(() => {
+      mapInstance?.invalidateSize()
+    })
+    // Map view renders markers for whatever the table has already loaded.
+    renderMap(currentItems)
+  } else {
+    mapContainerEl.style.display = "none"
+    // Important on mobile: CSS sets #tableWrapContainer to `display: contents` so
+    // `.table-wrap` remains the flex child and provides the scrollable region.
+    // Forcing `display: block` here breaks scrolling because `body` is
+    // `overflow: hidden` on small screens.
+    tableWrapContainerEl.style.display = ""
+  }
+
+  updateLoadMoreUi()
+}
+
 function toggleCategorySortWithinDay(): void {
   sortByCategoryWithinDay = !sortByCategoryWithinDay
   updateCategorySortHeader()
+  syncFiltersToggleButtonState()
   renderRows(sortItemsByCategoryWithinDay(currentItems))
 }
 
@@ -358,7 +601,20 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
     const locationTd = document.createElement("td")
     locationTd.setAttribute("data-label", "Location")
     locationTd.className = "location-cell"
-    locationTd.textContent = item.location || "N/A"
+    if (item.location) {
+      const mapsQuery = encodeURIComponent(
+        item.city ? `${item.location}, ${item.city}` : item.location,
+      )
+      const locationLink = document.createElement("a")
+      locationLink.href = `https://maps.google.com/?q=${mapsQuery}`
+      locationLink.target = "_blank"
+      locationLink.rel = "noreferrer noopener"
+      locationLink.textContent = item.location
+      locationLink.className = "location-link"
+      locationTd.appendChild(locationLink)
+    } else {
+      locationTd.textContent = "N/A"
+    }
 
     const categoryTd = document.createElement("td")
     categoryTd.setAttribute("data-label", "Category")
@@ -374,7 +630,7 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
 
     const sourceIconsInline = document.createElement("div")
     sourceIconsInline.className = "source-icons-inline"
-    sourceIconsInline.appendChild(createSourceIconLink(item.url))
+    sourceIconsInline.appendChild(createSourceIconLink(item.url, item.source))
     if (item.altUrl) {
       sourceIconsInline.appendChild(createSourceIconLink(item.altUrl))
     }
@@ -414,6 +670,13 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
 }
 
 function updateLoadMoreUi(): void {
+  // In map view we hide pagination controls (markers reflect the list's loaded items).
+  if (viewMode === "map") {
+    loadMoreBtn.style.display = "none"
+    loadMoreBtn.disabled = true
+    return
+  }
+
   loadMoreBtn.style.display = hasMore ? "" : "none"
   loadMoreBtn.disabled = !hasMore || isLoading
 }
@@ -429,8 +692,11 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
+    sort: timeSortDir,
   })
   if (query) params.set("q", query)
+  if (categoryFilter) params.set("category", categoryFilter)
+  if (datePreset && datePreset !== "all") params.set("preset", datePreset)
 
   try {
     const response = await fetch(apiPath + "?" + params.toString())
@@ -472,6 +738,11 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
       page < totalPages &&
       currentItems.length < data.total &&
       newItems.length > 0
+
+    // Keep map markers in sync with the list.
+    if (viewMode === "map") {
+      renderMap(currentItems)
+    }
   } catch (error) {
     metaEl.textContent =
       "Error loading events. " +
@@ -493,6 +764,7 @@ loadMoreBtn.addEventListener("click", () => {
 
 searchBtn.addEventListener("click", () => {
   query = searchInput.value.trim()
+  syncFiltersToggleButtonState()
   page = 1
   load("replace")
 })
@@ -500,6 +772,9 @@ searchBtn.addEventListener("click", () => {
 clearBtn.addEventListener("click", () => {
   searchInput.value = ""
   query = ""
+  categoryFilter = ""
+  categoryFilterEl.value = ""
+  syncFiltersToggleButtonState()
   page = 1
   load("replace")
 })
@@ -507,6 +782,19 @@ clearBtn.addEventListener("click", () => {
 searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Enter") {
     searchBtn.click()
+  }
+})
+
+dateSortHeaderEl.tabIndex = 0
+dateSortHeaderEl.setAttribute("role", "button")
+dateSortHeaderEl.setAttribute("aria-label", "Toggle time sort direction")
+dateSortHeaderEl.addEventListener("click", () => {
+  toggleTimeSort()
+})
+dateSortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault()
+    toggleTimeSort()
   }
 })
 
@@ -531,6 +819,58 @@ categorySortHeaderEl.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 })
 
-updateCategorySortHeader()
+const presetBtns = document.querySelectorAll<HTMLButtonElement>(
+  ".preset-btn[data-preset]",
+)
 
+function setDatePreset(preset: string): void {
+  datePreset = preset
+  syncFiltersToggleButtonState()
+  presetBtns.forEach((btn) => {
+    btn.setAttribute(
+      "aria-pressed",
+      btn.dataset.preset === preset ? "true" : "false",
+    )
+  })
+  page = 1
+  load("replace")
+}
+
+presetBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setDatePreset(btn.dataset.preset ?? "all")
+  })
+})
+
+categoryFilterEl.addEventListener("change", () => {
+  categoryFilter = categoryFilterEl.value
+  syncFiltersToggleButtonState()
+  page = 1
+  load("replace")
+})
+
+async function populateCategoryFilter(): Promise<void> {
+  try {
+    const res = await fetch("/api/categories")
+    if (!res.ok) return
+    const data = (await res.json()) as { categories: string[] }
+    for (const cat of data.categories) {
+      const opt = document.createElement("option")
+      opt.value = cat
+      opt.textContent = cat
+      categoryFilterEl.appendChild(opt)
+    }
+  } catch {
+    // non-critical; filter just stays as "All categories"
+  }
+}
+
+viewToggleBtn.addEventListener("click", () => {
+  setViewMode(viewMode === "list" ? "map" : "list")
+})
+
+updateCategorySortHeader()
+updateDateSortHeader()
+
+populateCategoryFilter()
 load("replace")

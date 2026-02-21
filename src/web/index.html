@@ -152,7 +152,54 @@
       }
       .toolbar {
         display: flex;
+        flex-direction: column;
+        gap: 8px;
         margin-bottom: 16px;
+      }
+      .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .filters-toggle-btn {
+        display: none;
+        white-space: nowrap;
+      }
+      .filters-menu {
+        display: block;
+      }
+      .filters-modal-header {
+        display: none;
+      }
+      .filters-modal-title {
+        font-weight: 700;
+      }
+      .preset-btns {
+        display: flex;
+        gap: 4px;
+        flex-wrap: nowrap;
+      }
+      .preset-btn {
+        padding: 5px 12px;
+        font-size: 13px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .preset-btn[aria-pressed="true"] {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+      }
+      select {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 14px;
+        cursor: pointer;
+        max-width: 220px;
       }
       .search-group {
         display: flex;
@@ -216,15 +263,54 @@
         cursor: default;
       }
       .meta {
-        margin-bottom: 12px;
+        margin-bottom: 0;
         color: var(--meta);
       }
       .meta-row {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .meta-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
       }
       .mobile-sort-wrap {
         display: none;
         margin-bottom: 10px;
+      }
+      .icon-btn {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        padding: 0;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .icon-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+      /* The filters toggle is an icon button; keep it hidden on desktop. */
+      .icon-btn.filters-toggle-btn {
+        display: none;
+      }
+      .icon-btn.filters-toggle-btn[data-active-filters="true"]::after {
+        content: "";
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: currentColor;
       }
       .mobile-sort-btn {
         width: 100%;
@@ -274,16 +360,19 @@
         background: var(--surface-soft);
         font-weight: 600;
       }
-      #categorySortHeader {
+      #categorySortHeader,
+      #dateSortHeader {
         cursor: pointer;
         user-select: none;
         text-decoration: underline;
         text-underline-offset: 2px;
       }
-      #categorySortHeader:hover {
+      #categorySortHeader:hover,
+      #dateSortHeader:hover {
         color: var(--meta);
       }
-      #categorySortHeader:focus-visible {
+      #categorySortHeader:focus-visible,
+      #dateSortHeader:focus-visible {
         outline: 2px solid var(--text);
         outline-offset: -2px;
       }
@@ -322,6 +411,15 @@
       }
       .event-title {
         font-weight: 600;
+      }
+      .location-link {
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-color: var(--border);
+      }
+      .location-link:hover {
+        text-decoration-color: var(--text);
       }
       .category-pill {
         display: inline-flex;
@@ -369,6 +467,21 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      #mapContainer {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      #tableWrapContainer {
+        display: contents;
+      }
+      .view-toggle-btn {
+        white-space: nowrap;
+        flex-shrink: 0;
       }
       .pagination {
         margin-top: 10px;
@@ -438,6 +551,47 @@
           display: block;
           margin-bottom: 8px;
         }
+        .icon-btn.filters-toggle-btn {
+          display: inline-flex;
+        }
+        .filters-menu {
+          position: fixed;
+          inset: 0;
+          z-index: 50;
+          background: var(--bg);
+          margin-top: 0;
+          padding: 12px;
+          overflow: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .filters-menu[data-open="false"] {
+          display: none;
+        }
+        .filters-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--border-soft);
+        }
+        .filter-row {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 8px;
+        }
+        .preset-btns {
+          width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 2px;
+        }
+        select {
+          max-width: none;
+          width: 100%;
+        }
         .search-group {
           width: 100%;
         }
@@ -462,7 +616,6 @@
         .mobile-sort-wrap {
           display: block;
           margin-bottom: 0;
-          flex: 0 0 auto;
         }
         .mobile-sort-btn {
           width: auto;
@@ -595,7 +748,6 @@
           gap: 6px;
           align-items: center;
           padding-bottom: env(safe-area-inset-bottom);
-
         }
         .pagination button {
           width: 100%;
@@ -642,39 +794,116 @@
           <button id="searchBtn">Search</button>
           <button id="clearBtn">Clear</button>
         </div>
+        <div id="filtersMenu" class="filters-menu" data-open="true">
+          <div class="filters-modal-header">
+            <div class="filters-modal-title">Filters</div>
+            <button
+              id="filtersCloseBtn"
+              class="icon-btn"
+              type="button"
+              aria-label="Close filters"
+              title="Close filters"
+            >
+            </button>
+          </div>
+          <div class="filter-row">
+            <div class="preset-btns" role="group" aria-label="Date range">
+              <button
+                class="preset-btn"
+                data-preset="all"
+                aria-pressed="true"
+                type="button"
+              >
+                All
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="today"
+                aria-pressed="false"
+                type="button"
+              >
+                Today
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="weekend"
+                aria-pressed="false"
+                type="button"
+              >
+                This Weekend
+              </button>
+              <button
+                class="preset-btn"
+                data-preset="week"
+                aria-pressed="false"
+                type="button"
+              >
+                This Week
+              </button>
+            </div>
+            <select id="categoryFilter" aria-label="Filter by category">
+              <option value="">All categories</option>
+            </select>
+            <div class="mobile-sort-wrap">
+              <button
+                id="mobileCategorySortBtn"
+                class="mobile-sort-btn"
+                type="button"
+                aria-label="Toggle category sorting within each day"
+                aria-pressed="false"
+              >
+                Category sort: Off
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="meta-row">
         <div id="meta" class="meta">Loading…</div>
-        <div class="mobile-sort-wrap">
+        <div class="meta-actions">
           <button
-            id="mobileCategorySortBtn"
-            class="mobile-sort-btn"
+            id="filtersToggleBtn"
+            class="icon-btn filters-toggle-btn"
             type="button"
-            aria-label="Toggle category sorting within each day"
+            aria-controls="filtersMenu"
+            aria-expanded="false"
+          ></button>
+          <button
+            id="viewToggleBtn"
+            class="view-toggle-btn"
+            type="button"
+            aria-label="Switch to map view"
           >
-            Sort by category
+            Map view
           </button>
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Date</th>
-              <th>Location</th>
-              <th id="categorySortHeader">Category</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
+      <div id="mapContainer"></div>
+      <div id="tableWrapContainer">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th id="dateSortHeader">Date ▲</th>
+                <th>Location</th>
+                <th id="categorySortHeader">Category</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
       </div>
       <div class="pagination">
         <button id="loadMoreBtn" type="button">Load more</button>
       </div>
     </div>
 
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
