@@ -40,12 +40,20 @@ let hasMore = false
 let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
 let currentItems: EventItem[] = []
-let allItemsForMap: EventItem[] = []
 let lastRenderedDate = ""
 let isLoading = false
 let viewMode: ViewMode = "list"
 let mapInstance: L.Map | null = null
 let mapMarkers: L.LayerGroup | null = null
+
+function getInitialMapView(): { center: L.LatLngExpression; zoom: number } {
+  // Desktop feels better slightly zoomed out so Fargo + Moorhead fit comfortably.
+  const isDesktop = window.matchMedia("(min-width: 1024px)").matches
+  return {
+    center: [46.877, -96.789],
+    zoom: isDesktop ? 11 : 12,
+  }
+}
 
 const rowsEl = document.getElementById("rows") as HTMLTableSectionElement
 const metaEl = document.getElementById("meta") as HTMLDivElement
@@ -297,7 +305,8 @@ function toggleTimeSort(): void {
 
 function initMap(): void {
   if (mapInstance) return
-  mapInstance = L.map("mapContainer").setView([46.877, -96.789], 12)
+  const initial = getInitialMapView()
+  mapInstance = L.map("mapContainer").setView(initial.center, initial.zoom)
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -327,14 +336,36 @@ function renderMap(items: EventItem[]): void {
     L.marker([lat, lng]).bindPopup(popup).addTo(mapMarkers)
   }
 
-  if (mappable.length > 0 && mapInstance) {
-    const group = L.featureGroup(
-      mappable.map((item) =>
-        L.marker([item.latitude as number, item.longitude as number]),
+  if (mappable.length === 1) {
+    const only = mappable[0]
+    mapInstance.setView(
+      [only.latitude as number, only.longitude as number],
+      14,
+      { animate: false },
+    )
+    return
+  }
+
+  if (mappable.length > 1) {
+    const bounds = L.latLngBounds(
+      mappable.map(
+        (item) => [item.latitude as number, item.longitude as number] as [
+          number,
+          number,
+        ],
       ),
     )
-    mapInstance.fitBounds(group.getBounds().pad(0.1))
+
+    mapInstance.fitBounds(bounds, {
+      padding: [24, 24],
+      maxZoom: 14,
+      animate: false,
+    })
+    return
   }
+
+  const initial = getInitialMapView()
+  mapInstance.setView(initial.center, initial.zoom, { animate: false })
 }
 
 function setViewMode(mode: ViewMode): void {
@@ -353,35 +384,18 @@ function setViewMode(mode: ViewMode): void {
     queueMicrotask(() => {
       mapInstance?.invalidateSize()
     })
-    // Fetch all items (unpaginated) for map
-    loadAllForMap()
+    // Map view renders markers for whatever the table has already loaded.
+    renderMap(currentItems)
   } else {
     mapContainerEl.style.display = "none"
-    tableWrapContainerEl.style.display = "block"
+    // Important on mobile: CSS sets #tableWrapContainer to `display: contents` so
+    // `.table-wrap` remains the flex child and provides the scrollable region.
+    // Forcing `display: block` here breaks scrolling because `body` is
+    // `overflow: hidden` on small screens.
+    tableWrapContainerEl.style.display = ""
   }
 
   updateLoadMoreUi()
-}
-
-async function loadAllForMap(): Promise<void> {
-  const params = new URLSearchParams({
-    page: "1",
-    pageSize: "500",
-    sort: timeSortDir,
-  })
-  if (query) params.set("q", query)
-  if (categoryFilter) params.set("category", categoryFilter)
-  if (datePreset && datePreset !== "all") params.set("preset", datePreset)
-
-  try {
-    const response = await fetch(apiPath + "?" + params.toString())
-    if (!response.ok) return
-    const data = (await response.json()) as EventsResponse
-    allItemsForMap = data.items || []
-    renderMap(allItemsForMap)
-  } catch {
-    // map stays empty
-  }
 }
 
 function toggleCategorySortWithinDay(): void {
@@ -564,7 +578,7 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
 }
 
 function updateLoadMoreUi(): void {
-  // Map view always loads the full set (up to the server limit), so pagination is irrelevant.
+  // In map view we hide pagination controls (markers reflect the list's loaded items).
   if (viewMode === "map") {
     loadMoreBtn.style.display = "none"
     loadMoreBtn.disabled = true
@@ -633,9 +647,9 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
       currentItems.length < data.total &&
       newItems.length > 0
 
-    // Keep map markers in sync with the active filters/search/sort.
-    if (mode === "replace" && viewMode === "map") {
-      await loadAllForMap()
+    // Keep map markers in sync with the list.
+    if (viewMode === "map") {
+      renderMap(currentItems)
     }
   } catch (error) {
     metaEl.textContent =
