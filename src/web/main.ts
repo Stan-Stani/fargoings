@@ -349,12 +349,18 @@ function setViewMode(mode: ViewMode): void {
     tableWrapContainerEl.style.display = "none"
     mapContainerEl.style.display = "block"
     initMap()
+    // Leaflet needs a size recalculation when the container becomes visible.
+    queueMicrotask(() => {
+      mapInstance?.invalidateSize()
+    })
     // Fetch all items (unpaginated) for map
     loadAllForMap()
   } else {
     mapContainerEl.style.display = "none"
     tableWrapContainerEl.style.display = "block"
   }
+
+  updateLoadMoreUi()
 }
 
 async function loadAllForMap(): Promise<void> {
@@ -558,6 +564,13 @@ function renderRows(items: EventItem[], options?: { append?: boolean }): void {
 }
 
 function updateLoadMoreUi(): void {
+  // Map view always loads the full set (up to the server limit), so pagination is irrelevant.
+  if (viewMode === "map") {
+    loadMoreBtn.style.display = "none"
+    loadMoreBtn.disabled = true
+    return
+  }
+
   loadMoreBtn.style.display = hasMore ? "" : "none"
   loadMoreBtn.disabled = !hasMore || isLoading
 }
@@ -619,6 +632,11 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
       page < totalPages &&
       currentItems.length < data.total &&
       newItems.length > 0
+
+    // Keep map markers in sync with the active filters/search/sort.
+    if (mode === "replace" && viewMode === "map") {
+      await loadAllForMap()
+    }
   } catch (error) {
     metaEl.textContent =
       "Error loading events. " +
