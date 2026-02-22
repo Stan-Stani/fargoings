@@ -613,15 +613,16 @@ export class EventDatabase {
   }
 
   /**
-   * Re-apply all venue rules to every event whose title matches, regardless
-   * of whether location data is already set. Use this after updating venue
-   * coordinates in venues.ts to fix stale enrichment data without refetching.
+   * Re-apply all venue rules to every event whose title or location matches,
+   * regardless of whether location data is already set. Use this after
+   * updating venue coordinates in venues.ts to fix stale enrichment data
+   * without refetching.
    * Returns the number of rows updated.
    */
   reapplyVenueLocations(): number {
     const allEvents = this.db
-      .prepare("SELECT eventId, title FROM events")
-      .all() as { eventId: string; title: string }[]
+      .prepare("SELECT eventId, title, location FROM events")
+      .all() as { eventId: string; title: string; location: string | null }[]
 
     const updateStmt = this.db.prepare(`
       UPDATE events
@@ -637,7 +638,10 @@ export class EventDatabase {
     const transaction = this.db.transaction(() => {
       for (const row of allEvents) {
         for (const rule of VENUE_RULES) {
-          if (rule.titlePattern.test(row.title)) {
+          if (
+            rule.titlePattern.test(row.title) ||
+            (row.location != null && rule.titlePattern.test(row.location))
+          ) {
             updateStmt.run({
               location: rule.location,
               city: rule.city,
@@ -656,16 +660,19 @@ export class EventDatabase {
   }
 
   /**
-   * For events where location is null, check if the title matches a known
-   * venue rule and backfill location/city/coords in the events table.
+   * For events where location is null/empty OR coordinates are missing, check
+   * if the title or location matches a known venue rule and backfill
+   * location/city/coords in the events table.
    * Returns the number of rows updated.
    */
   enrichVenueLocations(): number {
-    const nullLocationEvents = this.db
+    const incompleteEvents = this.db
       .prepare(
-        "SELECT eventId, title FROM events WHERE location IS NULL OR location = ''",
+        `SELECT eventId, title, location FROM events
+         WHERE location IS NULL OR location = ''
+            OR latitude IS NULL OR longitude IS NULL`,
       )
-      .all() as { eventId: string; title: string }[]
+      .all() as { eventId: string; title: string; location: string | null }[]
 
     const updateStmt = this.db.prepare(`
       UPDATE events
@@ -679,9 +686,12 @@ export class EventDatabase {
 
     let count = 0
     const transaction = this.db.transaction(() => {
-      for (const row of nullLocationEvents) {
+      for (const row of incompleteEvents) {
         for (const rule of VENUE_RULES) {
-          if (rule.titlePattern.test(row.title)) {
+          if (
+            rule.titlePattern.test(row.title) ||
+            (row.location != null && rule.titlePattern.test(row.location))
+          ) {
             updateStmt.run({
               location: rule.location,
               city: rule.city,
