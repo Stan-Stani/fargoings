@@ -36,6 +36,11 @@ export class FargoUndergroundFetcher {
     }
   })()
 
+  private readonly paradoxHtmlPattern: RegExp | null = (() => {
+    const rule = VENUE_RULES.find((r) => /paradox/i.test(r.location))
+    return rule?.htmlPattern ?? null
+  })()
+
   async fetchEvents(
     perPage: number = 100,
     daysAhead: number = 14,
@@ -100,8 +105,11 @@ export class FargoUndergroundFetcher {
       return null
     }
 
-    // If the event page itself mentions Paradox, treat it as a Paradox-hosted event.
-    if (/paradox/i.test(eventHtml)) {
+    // If the event page mentions the Paradox website domain, treat it as a
+    // Paradox-hosted event. We use the specific domain rather than the word
+    // "paradox" alone to avoid false positives from sidebar content, related
+    // events, or other unrelated mentions on the page.
+    if (this.paradoxHtmlPattern?.test(eventHtml)) {
       return this.paradoxVenue
     }
 
@@ -122,7 +130,7 @@ export class FargoUndergroundFetcher {
         "Info & Tickets page fetch",
       )
       const infoHtml = await response.text()
-      if (/paradox/i.test(infoHtml)) {
+      if (this.paradoxHtmlPattern?.test(infoHtml)) {
         return this.paradoxVenue
       }
     } catch {
