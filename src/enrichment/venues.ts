@@ -33,9 +33,9 @@ export const VENUE_RULES: VenueRule[] = [
      * listed on the same page.
      */
     htmlPattern: /paradoxcnc\.com/i,
-    location: "Paradox Comics & Games, 242 Broadway N",
+    location: "Paradox Comics & Games, 814 Main Ave Suite 100",
     city: "Fargo",
-    latitude: 46.877,
-    longitude: -96.789,
+    latitude: 46.881,
+    longitude: -96.790,
   },
 ]
