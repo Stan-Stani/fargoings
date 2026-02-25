@@ -221,15 +221,15 @@ export class EventDatabase {
       ON CONFLICT(eventId) DO UPDATE SET
         title = @title,
         url = @url,
-        location = @location,
+        location = COALESCE(@location, events.location),
         date = @date,
         startTime = @startTime,
         startDate = @startDate,
         endDate = @endDate,
-        latitude = @latitude,
-        longitude = @longitude,
-        city = @city,
-        imageUrl = @imageUrl,
+        latitude = COALESCE(@latitude, events.latitude),
+        longitude = COALESCE(@longitude, events.longitude),
+        city = COALESCE(@city, events.city),
+        imageUrl = COALESCE(@imageUrl, events.imageUrl),
         categories = @categories,
         updatedAt = CURRENT_TIMESTAMP
     `)
@@ -660,19 +660,25 @@ export class EventDatabase {
   }
 
   /**
-   * For events where location is null/empty OR coordinates are missing, check
-   * if the title or location matches a known venue rule and backfill
-   * location/city/coords in the events table.
+   * For events that match a known venue rule by title or location, ensure
+   * their location/city/coords match the rule. This both backfills missing
+   * data AND corrects wrong data from sources (e.g. outdated addresses).
+   * Only writes when data actually differs from the rule.
    * Returns the number of rows updated.
    */
   enrichVenueLocations(): number {
-    const incompleteEvents = this.db
+    const allEvents = this.db
       .prepare(
-        `SELECT eventId, title, location FROM events
-         WHERE location IS NULL OR location = ''
-            OR latitude IS NULL OR longitude IS NULL`,
+        "SELECT eventId, title, location, city, latitude, longitude FROM events",
       )
-      .all() as { eventId: string; title: string; location: string | null }[]
+      .all() as {
+        eventId: string
+        title: string
+        location: string | null
+        city: string | null
+        latitude: number | null
+        longitude: number | null
+      }[]
 
     const updateStmt = this.db.prepare(`
       UPDATE events
@@ -686,20 +692,27 @@ export class EventDatabase {
 
     let count = 0
     const transaction = this.db.transaction(() => {
-      for (const row of incompleteEvents) {
+      for (const row of allEvents) {
         for (const rule of VENUE_RULES) {
           if (
             rule.titlePattern.test(row.title) ||
             (row.location != null && rule.titlePattern.test(row.location))
           ) {
-            updateStmt.run({
-              location: rule.location,
-              city: rule.city,
-              latitude: rule.latitude,
-              longitude: rule.longitude,
-              eventId: row.eventId,
-            })
-            count++
+            if (
+              row.location !== rule.location ||
+              row.city !== rule.city ||
+              row.latitude !== rule.latitude ||
+              row.longitude !== rule.longitude
+            ) {
+              updateStmt.run({
+                location: rule.location,
+                city: rule.city,
+                latitude: rule.latitude,
+                longitude: rule.longitude,
+                eventId: row.eventId,
+              })
+              count++
+            }
             break
           }
         }

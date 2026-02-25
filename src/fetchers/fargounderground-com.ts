@@ -101,7 +101,8 @@ export class FargoUndergroundFetcher {
         "Fargo Underground event page fetch",
       )
       eventHtml = await response.text()
-    } catch {
+    } catch (error) {
+      console.warn(`   ⚠ Could not fetch event page ${eventUrl}:`, error instanceof Error ? error.message : error)
       return null
     }
 
