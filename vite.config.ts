@@ -9,7 +9,7 @@ const appVersion = packageJson.version || "0.0.0"
 
 export default defineConfig({
   root: "src/web",
-  base: "/fargoings/",
+  base: "/",
   resolve: {
     alias: {
       lucide: "lucide/dist/esm/lucide/src/lucide.js",
