@@ -678,6 +678,60 @@ function formatGroupTimeRange(groupItems: EventItem[]): string {
     : `${formatTimeShort(min)} – ${formatTimeShort(max)}`
 }
 
+// Locations are typically "Venue Name, Street Address". Splitting on the first
+// comma lets the header show the venue name bold and the address muted.
+function splitVenueLocation(location: string): {
+  name: string
+  address: string
+} {
+  const idx = location.indexOf(",")
+  if (idx === -1) return { name: location.trim(), address: "" }
+  return {
+    name: location.slice(0, idx).trim(),
+    address: location.slice(idx + 1).trim(),
+  }
+}
+
+function commonStringPrefix(strings: string[]): string {
+  if (strings.length < 2) return ""
+  let prefix = strings[0]
+  for (const s of strings.slice(1)) {
+    let i = 0
+    while (i < prefix.length && i < s.length && prefix[i] === s[i]) i++
+    prefix = prefix.slice(0, i)
+    if (!prefix) return ""
+  }
+  return prefix
+}
+
+function summarizeGroupTitles(groupItems: EventItem[]): {
+  prefix: string
+  suffixes: string[]
+} {
+  const titles = groupItems.map((g) => g.title.trim())
+  const raw = commonStringPrefix(titles)
+  // Trim trailing separators so the prefix lands on a word boundary.
+  const trimmed = raw.replace(/[\s:\-–—,]+$/, "")
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  // Need ≥2 words and ≥5 chars for the abbreviation to be useful, else fall
+  // back to showing full titles without a prefix chip.
+  if (trimmed.length < 5 || words.length < 2) {
+    return { prefix: "", suffixes: titles }
+  }
+  const suffixes = titles.map((t) =>
+    t.slice(raw.length).replace(/^[\s:\-–—,]+/, "").trim(),
+  )
+  // Initials from capitalized words ("Friday Night Magic" → "FNM"). Fall back
+  // to the full prefix if it doesn't yield ≥2 caps (e.g. "open mic" stays
+  // verbatim instead of becoming "om").
+  const initials = words
+    .filter((w) => /^[A-Z]/.test(w))
+    .map((w) => w[0])
+    .join("")
+  const prefix = initials.length >= 2 ? initials : trimmed
+  return { prefix, suffixes }
+}
+
 function applyVenueGroupState(key: string): void {
   const refs = venueGroupRefs.get(key)
   if (!refs) return
@@ -715,30 +769,65 @@ function buildVenueGroupHeader(
   const td = document.createElement("td")
   td.colSpan = 5
 
-  const inner = document.createElement("div")
-  inner.className = "venue-group-header-inner"
+  const headline = document.createElement("div")
+  headline.className = "venue-group-headline"
 
   const chevron = document.createElement("span")
   chevron.className = "venue-group-chevron"
   chevron.setAttribute("aria-hidden", "true")
   chevron.textContent = "▶"
+  headline.appendChild(chevron)
 
-  const label = document.createElement("span")
-  label.className = "venue-group-label"
-  label.textContent = `${location} — ${groupItems.length} events`
+  const { name, address } = splitVenueLocation(location)
+  const nameEl = document.createElement("span")
+  nameEl.className = "venue-group-name"
+  nameEl.textContent = name
+  headline.appendChild(nameEl)
 
-  inner.appendChild(chevron)
-  inner.appendChild(label)
+  if (address) {
+    const addressEl = document.createElement("span")
+    addressEl.className = "venue-group-address"
+    addressEl.textContent = `· ${address}`
+    headline.appendChild(addressEl)
+  }
+
+  const countPill = document.createElement("span")
+  countPill.className = "venue-group-count-pill"
+  countPill.textContent = `${groupItems.length} events`
+  headline.appendChild(countPill)
 
   const timeRange = formatGroupTimeRange(groupItems)
   if (timeRange) {
     const timeEl = document.createElement("span")
     timeEl.className = "venue-group-time-range"
     timeEl.textContent = timeRange
-    inner.appendChild(timeEl)
+    headline.appendChild(timeEl)
   }
 
-  td.appendChild(inner)
+  td.appendChild(headline)
+
+  // Salient-contents summary line: list distinctive parts of the event titles,
+  // factoring out any common prefix into a small chip.
+  const summary = summarizeGroupTitles(groupItems)
+  if (summary.suffixes.length > 0) {
+    const summaryEl = document.createElement("div")
+    summaryEl.className = "venue-group-summary"
+
+    if (summary.prefix) {
+      const prefixEl = document.createElement("span")
+      prefixEl.className = "venue-group-summary-prefix"
+      prefixEl.textContent = summary.prefix
+      summaryEl.appendChild(prefixEl)
+    }
+
+    const partsEl = document.createElement("span")
+    partsEl.className = "venue-group-summary-parts"
+    partsEl.textContent = summary.suffixes.join(" · ")
+    summaryEl.appendChild(partsEl)
+
+    td.appendChild(summaryEl)
+  }
+
   tr.appendChild(td)
 
   tr.addEventListener("click", () => toggleVenueGroup(key))
@@ -800,12 +889,15 @@ function renderRows(items: EventItem[]): void {
       const header = buildVenueGroupHeader(item.location!, groupItems, k)
       rowsEl.appendChild(header)
       const childRows: HTMLTableRowElement[] = []
-      for (const child of groupItems) {
+      groupItems.forEach((child, idx) => {
         const childTr = buildEventRow(child)
         childTr.classList.add("venue-group-child")
+        if (idx === groupItems.length - 1) {
+          childTr.classList.add("venue-group-child-last")
+        }
         rowsEl.appendChild(childTr)
         childRows.push(childTr)
-      }
+      })
       venueGroupRefs.set(k, { header, children: childRows })
       applyVenueGroupState(k)
       emittedHeaders.add(k)
