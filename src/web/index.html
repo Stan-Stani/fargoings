@@ -20,6 +20,11 @@
         --scroll-thumb: #9ca3af;
         --scroll-thumb-hover: #6b7280;
         --scroll-track: #f3f4f6;
+        --group-container-bg: #f8fafc;
+        --group-header-bg: #eef2f6;
+        --group-border: #cbd5e1;
+        --accent-soft-bg: #ccfbf1;
+        --accent-soft-text: #0f766e;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -36,6 +41,11 @@
           --scroll-thumb: #6b7280;
           --scroll-thumb-hover: #9ca3af;
           --scroll-track: #1f2937;
+          --group-container-bg: #1a2333;
+          --group-header-bg: #2a3447;
+          --group-border: #475569;
+          --accent-soft-bg: rgba(45, 212, 191, 0.18);
+          --accent-soft-text: #5eead4;
         }
       }
       :root[data-theme="light"] {
@@ -52,6 +62,11 @@
         --scroll-thumb: #9ca3af;
         --scroll-thumb-hover: #6b7280;
         --scroll-track: #f3f4f6;
+        --group-container-bg: #f8fafc;
+        --group-header-bg: #eef2f6;
+        --group-border: #cbd5e1;
+        --accent-soft-bg: #ccfbf1;
+        --accent-soft-text: #0f766e;
       }
       :root[data-theme="dark"] {
         --bg: #111827;
@@ -67,6 +82,11 @@
         --scroll-thumb: #6b7280;
         --scroll-thumb-hover: #9ca3af;
         --scroll-track: #1f2937;
+        --group-container-bg: #1a2333;
+        --group-header-bg: #2a3447;
+        --group-border: #475569;
+        --accent-soft-bg: rgba(45, 212, 191, 0.18);
+        --accent-soft-text: #5eead4;
       }
       body {
         font-family:
@@ -390,29 +410,29 @@
         z-index: 2;
       }
       /* Venue groups: header + (optionally) children render as a single
-         bordered "card-in-card" container on desktop. Border closure is
-         expressed via per-cell borders so the existing table layout doesn't
-         need restructuring. */
+         bordered "card-in-card" container on desktop. Header and children
+         use distinct tints so the container reads as a contained group,
+         not just adjacent rows. Border closure is via per-cell borders. */
       .venue-group-header {
         cursor: pointer;
         user-select: none;
       }
       .venue-group-header td {
-        background: var(--surface-soft);
+        background: var(--group-header-bg);
         padding: 12px 14px;
-        border-top: 1px solid var(--border);
+        border-top: 1px solid var(--group-border);
       }
       .venue-group-header td:first-child {
-        border-left: 1px solid var(--border);
+        border-left: 1px solid var(--group-border);
         border-top-left-radius: 10px;
       }
       .venue-group-header td:last-child {
-        border-right: 1px solid var(--border);
+        border-right: 1px solid var(--group-border);
         border-top-right-radius: 10px;
       }
       /* Collapsed header is the entire box; close it with bottom borders. */
       .venue-group-header[data-expanded="false"] td {
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--group-border);
       }
       .venue-group-header[data-expanded="false"] td:first-child {
         border-bottom-left-radius: 10px;
@@ -420,9 +440,9 @@
       .venue-group-header[data-expanded="false"] td:last-child {
         border-bottom-right-radius: 10px;
       }
-      /* Expanded header: dividers between header and first child stay light. */
+      /* Expanded header: divider between header and first child. */
       .venue-group-header[data-expanded="true"] td {
-        border-bottom: 1px solid var(--border-soft);
+        border-bottom: 1px solid var(--group-border);
       }
       .venue-group-header:hover td {
         background: var(--surface-accent);
@@ -460,14 +480,14 @@
         font-size: 13px;
       }
       .venue-group-count-pill {
-        padding: 1px 8px;
-        border: 1px solid var(--border-soft);
+        padding: 1px 9px;
         border-radius: 999px;
-        background: var(--surface);
+        background: var(--accent-soft-bg);
         font-size: 11px;
         font-weight: 600;
-        color: var(--meta);
-        line-height: 1.5;
+        color: var(--accent-soft-text);
+        line-height: 1.6;
+        letter-spacing: 0.1px;
       }
       .venue-group-time-range {
         margin-left: auto;
@@ -479,34 +499,50 @@
         margin-top: 6px;
         color: var(--muted);
         font-size: 13px;
-        line-height: 1.4;
+        line-height: 1.5;
       }
       .venue-group-summary-prefix {
         display: inline-block;
         margin-right: 8px;
-        padding: 1px 6px;
+        padding: 1px 7px;
         border-radius: 4px;
-        background: var(--surface);
-        color: var(--meta);
+        background: var(--accent-soft-bg);
+        color: var(--accent-soft-text);
         font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.6px;
         text-transform: uppercase;
-        line-height: 1.6;
+        line-height: 1.7;
         vertical-align: 2px;
       }
+      /* Children inside an expanded group use a slightly tinted background
+         to read as "inside the container" and contrast with the header. */
       .venue-group-child td {
-        background: var(--surface-soft);
+        background: var(--group-container-bg);
       }
       .venue-group-child td:first-child {
-        border-left: 1px solid var(--border);
-        padding-left: 24px;
+        border-left: 1px solid var(--group-border);
+        padding-left: 28px;
+        position: relative;
+      }
+      .venue-group-child td:first-child::before {
+        content: "";
+        position: absolute;
+        left: 14px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--group-border);
+        opacity: 0.55;
       }
       .venue-group-child td:last-child {
-        border-right: 1px solid var(--border);
+        border-right: 1px solid var(--group-border);
+      }
+      .venue-group-child td {
+        border-bottom: 1px solid var(--row-border);
       }
       .venue-group-child-last td {
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--group-border);
       }
       .venue-group-child-last td:first-child {
         border-bottom-left-radius: 10px;
@@ -868,13 +904,13 @@
         tbody tr.day-marker td::before {
           content: none;
         }
-        /* Mobile: keep the card-in-card spirit using a soft surface for the
-           header and a left-rail accent for children. True nested borders
-           are difficult inside a tbody of stacked cards. */
+        /* Mobile: tinted header + tinted child cards with a left-rail accent
+           to read as nested inside a venue group. True per-cell nesting
+           borders are impractical inside the stacked-card layout. */
         tbody tr.venue-group-header {
           margin-bottom: 4px;
-          background: var(--surface-soft);
-          border: 1px solid var(--border);
+          background: var(--group-header-bg);
+          border: 1px solid var(--group-border);
         }
         tbody tr.venue-group-header td {
           display: block;
@@ -893,8 +929,9 @@
           margin-left: auto;
         }
         tbody tr.venue-group-child {
-          margin-left: 12px;
-          border-left: 3px solid var(--border);
+          margin-left: 14px;
+          background: var(--group-container-bg);
+          border-left: 3px solid var(--group-border);
         }
         tbody tr.venue-group-child-last {
           margin-bottom: 12px;
