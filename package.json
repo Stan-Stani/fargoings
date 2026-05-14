@@ -1,6 +1,6 @@
 {
   "name": "fargoings",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "description": "Fargo, ND Event Aggregator",
   "main": "index.js",
   "scripts": {
