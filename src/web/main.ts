@@ -41,11 +41,20 @@ let hasMore = false
 let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
 let currentItems: EventItem[] = []
-let lastRenderedDate = ""
 let isLoading = false
 let viewMode: ViewMode = "list"
 let mapInstance: L.Map | null = null
 let mapMarkers: L.LayerGroup | null = null
+
+// Same-venue events on the same day get collapsed into a clickable group
+// header once this many share a (date, location) so dense venues (e.g.
+// Paradox Comics & Games on a Friday) don't dominate the list.
+const VENUE_GROUP_THRESHOLD = 3
+const expandedVenueGroups = new Set<string>()
+const venueGroupRefs = new Map<
+  string,
+  { header: HTMLTableRowElement; children: HTMLTableRowElement[] }
+>()
 
 function getInitialMapView(): { center: L.LatLngExpression; zoom: number } {
   // Desktop feels better slightly zoomed out so Fargo + Moorhead fit comfortably.
@@ -535,139 +544,275 @@ function sortItemsByCategoryWithinDay(items: EventItem[]): EventItem[] {
   return sorted
 }
 
-function renderRows(items: EventItem[], options?: { append?: boolean }): void {
-  const append = options?.append ?? false
-  if (!append) {
-    rowsEl.innerHTML = ""
-    lastRenderedDate = ""
+function buildEventRow(item: EventItem): HTMLTableRowElement {
+  const tr = document.createElement("tr")
+  tr.className = "event-row"
+  tr.tabIndex = 0
+  tr.setAttribute("role", "link")
+  tr.setAttribute("aria-label", `Open event: ${item.title}`)
+
+  const navigateToEvent = () => {
+    if (!isMobileCardLayoutActive()) {
+      return
+    }
+    window.open(item.url, "_blank", "noopener,noreferrer")
   }
 
-  let lastDate = append ? lastRenderedDate : ""
+  tr.addEventListener("click", (event: MouseEvent) => {
+    const targetElement = event.target as Element | null
+    if (targetElement?.closest("a")) {
+      return
+    }
+    navigateToEvent()
+  })
+
+  tr.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      navigateToEvent()
+    }
+  })
+
+  const titleTd = document.createElement("td")
+  titleTd.setAttribute("data-label", "Title")
+  titleTd.className = "title-cell"
+  const titleText = document.createElement("span")
+  titleText.className = "event-title"
+  titleText.textContent = item.title
+  titleTd.appendChild(titleText)
+
+  const dateTd = document.createElement("td")
+  dateTd.setAttribute("data-label", "Date")
+  dateTd.className = "datetime-cell"
+  dateTd.textContent = formatDate(item.date, item.startTime)
+
+  const locationTd = document.createElement("td")
+  locationTd.setAttribute("data-label", "Location")
+  locationTd.className = "location-cell"
+  if (item.location) {
+    const mapsQuery = encodeURIComponent(
+      item.city ? `${item.location}, ${item.city}` : item.location,
+    )
+    const locationLink = document.createElement("a")
+    locationLink.href = `https://maps.google.com/?q=${mapsQuery}`
+    locationLink.target = "_blank"
+    locationLink.rel = "noreferrer noopener"
+    locationLink.textContent = item.location
+    locationLink.className = "location-link"
+    locationTd.appendChild(locationLink)
+  } else {
+    locationTd.textContent = "N/A"
+  }
+
+  const categoryTd = document.createElement("td")
+  categoryTd.setAttribute("data-label", "Category")
+  categoryTd.className = "category-cell"
+
+  const categoryInline = document.createElement("div")
+  categoryInline.className = "category-inline"
+
+  const categoryPill = document.createElement("span")
+  categoryPill.className = "category-pill"
+  categoryPill.textContent = formatCategory(item.categories)
+  categoryInline.appendChild(categoryPill)
+
+  const sourceIconsInline = document.createElement("div")
+  sourceIconsInline.className = "source-icons-inline"
+  sourceIconsInline.appendChild(createSourceIconLink(item.url, item.source))
+  if (item.altUrl) {
+    sourceIconsInline.appendChild(createSourceIconLink(item.altUrl))
+  }
+  categoryInline.appendChild(sourceIconsInline)
+
+  categoryTd.appendChild(categoryInline)
+
+  const sourceTd = document.createElement("td")
+  sourceTd.setAttribute("data-label", "Source")
+  sourceTd.className = "source-cell"
+  const sourceList = document.createElement("div")
+  sourceList.className = "source-list"
+
+  sourceList.appendChild(createSourceChip(item.url, item.source))
+
+  if (item.altUrl) {
+    const altSourceLabel = formatSourceHostLabel(getHostFromUrl(item.altUrl))
+    sourceList.appendChild(createSourceChip(item.altUrl, altSourceLabel))
+  }
+
+  const sourceMeta = document.createElement("div")
+  sourceMeta.className = "source-meta"
+  sourceMeta.textContent = formatSourceHostLabel(getHostFromUrl(item.url))
+
+  sourceTd.appendChild(sourceList)
+  sourceTd.appendChild(sourceMeta)
+
+  tr.appendChild(titleTd)
+  tr.appendChild(dateTd)
+  tr.appendChild(locationTd)
+  tr.appendChild(categoryTd)
+  tr.appendChild(sourceTd)
+  return tr
+}
+
+function venueGroupKey(item: EventItem): string | null {
+  if (!item.location) return null
+  return `${item.date}|${item.location}`
+}
+
+function formatTimeShort(time: string): string {
+  const [h, m] = time.split(":").map(Number)
+  const hour = h % 12 || 12
+  const ampm = h < 12 ? "AM" : "PM"
+  return `${hour}:${String(m).padStart(2, "0")} ${ampm}`
+}
+
+function formatGroupTimeRange(groupItems: EventItem[]): string {
+  const times = groupItems
+    .map((g) => g.startTime)
+    .filter((t): t is string => Boolean(t))
+  if (times.length === 0) return ""
+  const min = times.reduce((a, b) => (a < b ? a : b))
+  const max = times.reduce((a, b) => (a > b ? a : b))
+  return min === max
+    ? formatTimeShort(min)
+    : `${formatTimeShort(min)} – ${formatTimeShort(max)}`
+}
+
+function applyVenueGroupState(key: string): void {
+  const refs = venueGroupRefs.get(key)
+  if (!refs) return
+  const expanded = expandedVenueGroups.has(key)
+  refs.header.dataset.expanded = expanded ? "true" : "false"
+  refs.header.setAttribute("aria-expanded", expanded ? "true" : "false")
+  for (const child of refs.children) {
+    child.classList.toggle("venue-group-hidden", !expanded)
+  }
+}
+
+function toggleVenueGroup(key: string): void {
+  if (expandedVenueGroups.has(key)) {
+    expandedVenueGroups.delete(key)
+  } else {
+    expandedVenueGroups.add(key)
+  }
+  applyVenueGroupState(key)
+}
+
+function buildVenueGroupHeader(
+  location: string,
+  groupItems: EventItem[],
+  key: string,
+): HTMLTableRowElement {
+  const tr = document.createElement("tr")
+  tr.className = "venue-group-header"
+  tr.tabIndex = 0
+  tr.setAttribute("role", "button")
+  tr.setAttribute(
+    "aria-label",
+    `${location}: ${groupItems.length} events. Click to expand.`,
+  )
+
+  const td = document.createElement("td")
+  td.colSpan = 5
+
+  const inner = document.createElement("div")
+  inner.className = "venue-group-header-inner"
+
+  const chevron = document.createElement("span")
+  chevron.className = "venue-group-chevron"
+  chevron.setAttribute("aria-hidden", "true")
+  chevron.textContent = "▶"
+
+  const label = document.createElement("span")
+  label.className = "venue-group-label"
+  label.textContent = `${location} — ${groupItems.length} events`
+
+  inner.appendChild(chevron)
+  inner.appendChild(label)
+
+  const timeRange = formatGroupTimeRange(groupItems)
+  if (timeRange) {
+    const timeEl = document.createElement("span")
+    timeEl.className = "venue-group-time-range"
+    timeEl.textContent = timeRange
+    inner.appendChild(timeEl)
+  }
+
+  td.appendChild(inner)
+  tr.appendChild(td)
+
+  tr.addEventListener("click", () => toggleVenueGroup(key))
+  tr.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      toggleVenueGroup(key)
+    }
+  })
+
+  return tr
+}
+
+function renderRows(items: EventItem[]): void {
+  rowsEl.innerHTML = ""
+  venueGroupRefs.clear()
+
+  // Pre-pass: count items per (date, location) to identify collapsible groups.
+  // Grouping is suppressed while category-sort-within-day is active, since
+  // that mode breaks adjacency expectations and the collapse benefit is
+  // mostly visual.
+  const groupSizes = new Map<string, EventItem[]>()
+  if (!sortByCategoryWithinDay) {
+    for (const item of items) {
+      const k = venueGroupKey(item)
+      if (!k) continue
+      const arr = groupSizes.get(k) || []
+      arr.push(item)
+      groupSizes.set(k, arr)
+    }
+  }
+
+  const collapsibleGroups = new Set<string>()
+  for (const [k, arr] of groupSizes) {
+    if (arr.length >= VENUE_GROUP_THRESHOLD) collapsibleGroups.add(k)
+  }
+
+  const emittedHeaders = new Set<string>()
+  let lastDate = ""
 
   for (const item of items) {
     if (item.date !== lastDate) {
       const dayMarkerRow = document.createElement("tr")
       dayMarkerRow.className = "day-marker"
-
       const dayMarkerCell = document.createElement("td")
       dayMarkerCell.colSpan = 5
       dayMarkerCell.textContent = formatDayLabel(item.date)
-
       dayMarkerRow.appendChild(dayMarkerCell)
       rowsEl.appendChild(dayMarkerRow)
       lastDate = item.date
     }
 
-    const tr = document.createElement("tr")
-    tr.className = "event-row"
-    tr.tabIndex = 0
-    tr.setAttribute("role", "link")
-    tr.setAttribute("aria-label", `Open event: ${item.title}`)
-
-    const navigateToEvent = () => {
-      if (!isMobileCardLayoutActive()) {
-        return
+    const k = venueGroupKey(item)
+    if (k && collapsibleGroups.has(k)) {
+      // Emit the full group (header + children) on first encounter; skip
+      // subsequent items of the same group since they're already rendered.
+      if (emittedHeaders.has(k)) continue
+      const groupItems = groupSizes.get(k)!
+      const header = buildVenueGroupHeader(item.location!, groupItems, k)
+      rowsEl.appendChild(header)
+      const childRows: HTMLTableRowElement[] = []
+      for (const child of groupItems) {
+        const childTr = buildEventRow(child)
+        childTr.classList.add("venue-group-child")
+        rowsEl.appendChild(childTr)
+        childRows.push(childTr)
       }
-      window.open(item.url, "_blank", "noopener,noreferrer")
-    }
-
-    tr.addEventListener("click", (event: MouseEvent) => {
-      const targetElement = event.target as Element | null
-      if (targetElement?.closest("a")) {
-        return
-      }
-      navigateToEvent()
-    })
-
-    tr.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault()
-        navigateToEvent()
-      }
-    })
-
-    const titleTd = document.createElement("td")
-    titleTd.setAttribute("data-label", "Title")
-    titleTd.className = "title-cell"
-    const titleText = document.createElement("span")
-    titleText.className = "event-title"
-    titleText.textContent = item.title
-    titleTd.appendChild(titleText)
-
-    const dateTd = document.createElement("td")
-    dateTd.setAttribute("data-label", "Date")
-    dateTd.className = "datetime-cell"
-    dateTd.textContent = formatDate(item.date, item.startTime)
-
-    const locationTd = document.createElement("td")
-    locationTd.setAttribute("data-label", "Location")
-    locationTd.className = "location-cell"
-    if (item.location) {
-      const mapsQuery = encodeURIComponent(
-        item.city ? `${item.location}, ${item.city}` : item.location,
-      )
-      const locationLink = document.createElement("a")
-      locationLink.href = `https://maps.google.com/?q=${mapsQuery}`
-      locationLink.target = "_blank"
-      locationLink.rel = "noreferrer noopener"
-      locationLink.textContent = item.location
-      locationLink.className = "location-link"
-      locationTd.appendChild(locationLink)
+      venueGroupRefs.set(k, { header, children: childRows })
+      applyVenueGroupState(k)
+      emittedHeaders.add(k)
     } else {
-      locationTd.textContent = "N/A"
+      rowsEl.appendChild(buildEventRow(item))
     }
-
-    const categoryTd = document.createElement("td")
-    categoryTd.setAttribute("data-label", "Category")
-    categoryTd.className = "category-cell"
-
-    const categoryInline = document.createElement("div")
-    categoryInline.className = "category-inline"
-
-    const categoryPill = document.createElement("span")
-    categoryPill.className = "category-pill"
-    categoryPill.textContent = formatCategory(item.categories)
-    categoryInline.appendChild(categoryPill)
-
-    const sourceIconsInline = document.createElement("div")
-    sourceIconsInline.className = "source-icons-inline"
-    sourceIconsInline.appendChild(createSourceIconLink(item.url, item.source))
-    if (item.altUrl) {
-      sourceIconsInline.appendChild(createSourceIconLink(item.altUrl))
-    }
-    categoryInline.appendChild(sourceIconsInline)
-
-    categoryTd.appendChild(categoryInline)
-
-    const sourceTd = document.createElement("td")
-    sourceTd.setAttribute("data-label", "Source")
-    sourceTd.className = "source-cell"
-    const sourceList = document.createElement("div")
-    sourceList.className = "source-list"
-
-    sourceList.appendChild(createSourceChip(item.url, item.source))
-
-    if (item.altUrl) {
-      const altSourceLabel = formatSourceHostLabel(getHostFromUrl(item.altUrl))
-      sourceList.appendChild(createSourceChip(item.altUrl, altSourceLabel))
-    }
-
-    const sourceMeta = document.createElement("div")
-    sourceMeta.className = "source-meta"
-    sourceMeta.textContent = formatSourceHostLabel(getHostFromUrl(item.url))
-
-    sourceTd.appendChild(sourceList)
-    sourceTd.appendChild(sourceMeta)
-
-    tr.appendChild(titleTd)
-    tr.appendChild(dateTd)
-    tr.appendChild(locationTd)
-    tr.appendChild(categoryTd)
-    tr.appendChild(sourceTd)
-    rowsEl.appendChild(tr)
   }
-
-  lastRenderedDate = lastDate
 }
 
 function updateLoadMoreUi(): void {
@@ -714,17 +859,21 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
     page = data.page || page
     totalPages = data.totalPages || 1
 
+    // Always re-render from the full currentItems set so venue grouping stays
+    // consistent across paginated loads. (For 50–500 rows the cost is trivial
+    // and the alternative — appending only new rows — would break group
+    // headers whose count depends on items spanning multiple pages.)
+    const previousScrollTop = tableWrapEl?.scrollTop ?? 0
     if (mode === "replace") {
       currentItems = newItems
-      renderRows(sortItemsByCategoryWithinDay(currentItems))
-      tableWrapEl?.scrollTo({ top: 0, left: 0, behavior: "auto" })
     } else {
       currentItems = currentItems.concat(newItems)
-      if (sortByCategoryWithinDay) {
-        renderRows(sortItemsByCategoryWithinDay(currentItems))
-      } else {
-        renderRows(newItems, { append: true })
-      }
+    }
+    renderRows(sortItemsByCategoryWithinDay(currentItems))
+    if (mode === "replace") {
+      tableWrapEl?.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    } else {
+      tableWrapEl?.scrollTo({ top: previousScrollTop, left: 0, behavior: "auto" })
     }
 
     metaEl.textContent =

@@ -389,6 +389,48 @@
         top: 0;
         z-index: 2;
       }
+      .venue-group-header {
+        cursor: pointer;
+        user-select: none;
+      }
+      .venue-group-header td {
+        background: var(--surface-soft);
+        font-weight: 600;
+      }
+      .venue-group-header:hover td {
+        background: var(--surface-accent);
+      }
+      .venue-group-header:focus-visible td {
+        outline: 2px solid var(--text);
+        outline-offset: -2px;
+      }
+      .venue-group-header-inner {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .venue-group-chevron {
+        display: inline-block;
+        width: 14px;
+        font-size: 11px;
+        color: var(--meta);
+        transform: rotate(0deg);
+        transition: transform 120ms ease;
+      }
+      .venue-group-header[data-expanded="true"] .venue-group-chevron {
+        transform: rotate(90deg);
+      }
+      .venue-group-label {
+        color: var(--text);
+      }
+      .venue-group-time-range {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 400;
+      }
+      .venue-group-hidden {
+        display: none !important;
+      }
       .source-chip {
         display: inline-flex;
         align-items: center;
@@ -739,6 +781,25 @@
         }
         tbody tr.day-marker td::before {
           content: none;
+        }
+        tbody tr.venue-group-header {
+          margin-bottom: 6px;
+          background: var(--surface-soft);
+          border: 1px solid var(--border-soft);
+        }
+        tbody tr.venue-group-header td {
+          display: block;
+          padding: 10px 12px;
+          border-bottom: 0;
+        }
+        tbody tr.venue-group-header .venue-group-header-inner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        tbody tr.venue-group-header .venue-group-time-range {
+          margin-left: auto;
         }
         .pagination {
           margin-top: 8px;
