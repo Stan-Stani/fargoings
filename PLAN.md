@@ -71,20 +71,18 @@ For (2) — same-source near-dups:
 - Use a **tighter threshold** for same-source (0.85+ vs. cross-source 0.65). Same venue + same time + same source is common for genuinely distinct events (Paradox runs Magic Modern + Magic Draft + Magic Commander simultaneously, all at 6:15 PM, all at Paradox), so title similarity needs to dominate.
 - When matched, keep the row with the more recent `updatedAt` (or higher event ID — assumes monotonic), drop the older. Record the merge in `matches` for audit.
 
-### F. Collapse same-venue events into a single row
+### F. ~~Collapse same-venue events into a single row~~ — SHIPPED 2026-05-14
 
-**Confirmed live on prod (2026-05-14):** Thu 5/14 has 3 Paradox events stacked (6:00 / 6:15 / 6:30 PM). Fri 5/15 has 5 Paradox events. After E.2 dedup these are likely real distinct events (different game systems), so collapse is a UX improvement, not a dedup fix.
-
-**Plan:** Client-side grouping in `renderRows()` keyed on `(date, location)` where group size ≥ 2. Render as a single row showing venue + count badge ("Paradox Comics & Games — 5 events"). Click expands to show the individual rows underneath. Default state: collapsed when 3+, expanded when 2. List view only — map already collapses spatially once B lands.
+Client-side grouping in `renderRows()` keyed on `(date, location)`. When ≥3 events share a venue on a date, they render under a single collapsible header showing the venue name, count, and time range (e.g. "Paradox Comics & Games — 4 events · 5:00 PM – 6:30 PM"). Default state is collapsed. Groups of 2 stay as individual rows. Grouping is suppressed when "Category sort within day" is active. Append-only pagination was replaced with a full re-render so group counts stay correct across "Load more"; scroll position is preserved.
 
 ---
 
 ## Suggested order
 
-1. ~~**E.1 — exact-URL repeats**~~ — shipped locally 2026-05-14; needs deploy + one-time `npm run refetch -- --source fargomoorhead.org`.
-2. **E.2 — same-source near-dup detection** (medium; this is the user-reported "post, delete, repost" case)
-3. **A — map loads all events** (small, high-impact; map view is largely useless without it)
-4. **B — marker clustering** (small, naturally follows A)
-5. **F — collapse same-venue rows** (UX polish; do after E so we're collapsing real distinct events, not duplicates)
+1. ~~**E.1 — exact-URL repeats**~~ — shipped 2026-05-14; deploy needs one-time `npm run refetch -- --source fargomoorhead.org`.
+2. ~~**E.2 — same-source near-dup detection**~~ — shipped 2026-05-14.
+3. ~~**F — collapse same-venue rows**~~ — shipped 2026-05-14.
+4. **A — map loads all events** (small, high-impact; map view currently shows only the loaded page)
+5. **B — marker clustering** (small, naturally follows A)
 6. **C — Moorhead + West Fargo libraries** (research-heavy)
 7. **D — Google Reviews decision** (one conversation, not coding work)
