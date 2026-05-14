@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import { FargoAPIResponse, FargoEvent, StoredEvent } from "../types/event"
 import {
   DEFAULT_BROWSER_HEADERS,
@@ -177,16 +178,34 @@ export class FargoFetcher {
     return `${year}-${month}-${day}`
   }
 
+  // Upstream returns the same logical event with different Mongo ObjectIds (the
+  // _id appears to be regenerated periodically and the API can return both the
+  // master listing and a per-occurrence document). Deriving eventId from stable
+  // fields collapses those copies onto a single row via the upsert.
+  private stableEventId(
+    url: string,
+    date: string,
+    startTime: string | null,
+  ): string {
+    return createHash("sha1")
+      .update(`${url}|${date}|${startTime ?? ""}`)
+      .digest("hex")
+      .slice(0, 24)
+  }
+
   transformToStoredEvent(
     event: FargoEvent,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
+    const date = this.toDateOnly(event.date)
+    const url = `https://www.fargomoorhead.org${event.url}`
+    const startTime = event.startTime || null
     return {
-      eventId: event._id,
+      eventId: this.stableEventId(url, date, startTime),
       title: event.title,
-      url: `https://www.fargomoorhead.org${event.url}`,
+      url,
       location: event.location || null,
-      date: this.toDateOnly(event.date),
-      startTime: event.startTime || null,
+      date,
+      startTime,
       startDate: this.toDateOnly(event.startDate),
       endDate: this.toDateOnly(event.endDate || event.startDate),
       latitude: event.latitude || null,

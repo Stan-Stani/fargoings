@@ -1,127 +1,90 @@
 # Implementation Plan
 
-## 1. Sort by Time (within day)
+_Last refreshed: 2026-05-14. Current version: v1.1.9._
 
-**Status:** Already implemented in DB query (`ORDER BY date ASC, COALESCE(startTime, '23:59:59') ASC`). No-time events sort last.
+## Shipped
 
-**Gap:** No visual indication. Category sort toggle overrides time ordering client-side. The "Date" column combines date+time making it harder to read at a glance.
+- **#1 Sort by Time (within day)** — `▲/▼` indicator in the Date header, clickable to toggle `asc/desc`. API param `sort=desc`. Orthogonal category sort kept. (`src/web/main.ts`, `src/web/api.ts`, `src/db/database.ts`)
+- **#2 Date Range Selectors** — Presets `today | weekend | week | all` wired via `preset=` query param and `resolveDateRange()` in `src/web/api.ts`. Active button highlighted via `aria-pressed`.
+- **#3 Map View** — Leaflet + OSM tiles. `List | Map` toggle, `latitude/longitude` columns added to `display_events` (with `ALTER TABLE` migration in `initialize()`), coords returned in API. _(See open gaps below — partial.)_
+- **#4 Venue Links → Google Maps** — Location cell links to `https://maps.google.com/?q=<location, city>`. (Google Reviews piece deferred — see below.)
+- **#5 Category Filter Dropdown** — `GET /api/categories`, `category=` param, populated `<select>` with HTML-entity decoding on display.
+- **#7 Fix Paradox Comics Location** — `src/enrichment/venues.ts` with `VENUE_RULES`, applied in `rebuildDisplayEvents()` and via `npm run reenrich`. Rules use a narrower `htmlPattern` (e.g., `paradoxcnc.com`) to avoid false matches against unrelated page content.
+
+---
+
+## Open
+
+### A. Map view: load all matching events, not just the loaded page
+
+**Problem:** `renderMap(currentItems)` only shows whatever the list has paged in (default `pageSize=50`). Open the map and you see at most 50 markers regardless of how many events match the current filters. PLAN.md originally specified "loads all matching events (not paginated) up to reasonable limit (e.g., 500)" — never implemented.
 
 **Plan:**
-- Add sort indicator (▲) to the Date/Time column header on desktop, showing it's sorted ascending
-- Make "Date" column header clickable to toggle: time-asc (default) vs. time-desc (pass `sort=desc` API param, DB flips ORDER to DESC)
-- Keep category sort as orthogonal. When category sort is on, secondary sort is time within category groups.
+- Add `unpaginated=1` (or `pageSize=500`) fetch in `setViewMode("map")` that requests up to 500 matching events with current filters
+- API: bump the `pageSize` cap from 100 to 500 _only_ when the request opts in (avoid changing list defaults)
+- Store the map result separately from `currentItems` so paging the list back in `list` mode isn't disrupted
+- Show "Showing N markers (M events have no coordinates)" in the map's meta area
 
----
+### B. Map view: marker clustering
 
-## 2. Date Range Selectors
-
-**Plan:**
-- Add `dateFrom` / `dateTo` query params to `/api/events` and `queryDisplayEvents()`
-- Add preset buttons below/beside search bar: **Today | This Weekend | This Month | All**
-  - Today: `dateFrom=today&dateTo=today`
-  - This Weekend: next or current Sat–Sun
-  - This Week: today through the coming Sunday (or end of current week)
-  - All: no upper bound (current default behavior)
-- Active button gets highlighted style
-- Buttons update URL params and reload; persists across page loads via `localStorage`
-- Mobile: horizontal scrollable button row
-
----
-
-## 3. Map View
+**Problem:** Dense days (Paradox alone often has 3–4 events) stack markers exactly on top of each other — only one is clickable.
 
 **Plan:**
-- Add `latitude` / `longitude` to `display_events` table (migration via ALTER TABLE IF NOT EXISTS approach in `initialize()`)
-- Include coords in `rebuildDisplayEvents()` (pull from source `events` table join)
-- Add coords to API response (`DisplayEvent` type + `queryDisplayEvents`)
-- Frontend: add **List | Map** toggle button (top-right of toolbar)
-- Map powered by **Leaflet.js** + OpenStreetMap (no API key, free):
-  - `npm install leaflet @types/leaflet`
-  - Render map in a `<div id="map">` that replaces `.table-wrap` when active
-  - Markers clustered with `leaflet.markercluster`
-  - Clicking a marker → popup with title, formatted date/time, location, link to event
-- Events without coords are excluded from map view (show count of excluded)
-- Map loads all matching events (not paginated) up to reasonable limit (e.g., 500)
+- `npm install leaflet.markercluster @types/leaflet.markercluster`
+- Replace the bare `L.layerGroup()` with `L.markerClusterGroup()`
+- Tune `maxClusterRadius` (start at 40px) and enable `spiderfyOnMaxZoom` so co-located venues fan out at max zoom
 
----
+### C. Library Events: Moorhead and West Fargo
 
-## 4. Venue Links + Google Reviews
+**Status:** Fargo Public Library is shipped (`src/fetchers/fargolibrary-org.ts`, hitting `fargond.gov/programdata`). The other two libraries are still missing.
 
 **Plan:**
-- Make the location cell text a **Google Maps search link**: `https://maps.google.com/?q=<encoded location + city>`
-- Add a small Google Maps icon/chip next to location (links to same)
-- Full embedded Google Reviews (Places API) requires API key + billing — **defer** or make configurable via env var `GOOGLE_PLACES_API_KEY`
-  - If key present: fetch place rating/review count server-side, cache in DB, show star rating chip
-  - If no key: just the Google Maps link
-- This keeps it zero-cost by default
+- **Moorhead Public Library** — inspect `lakeagassiz.com` and `cityofmoorhead.com/library` for an events feed (JSON, iCal, or RSS). Build `src/fetchers/moorheadlibrary-org.ts` following the existing fetcher pattern. ID prefix `mph_`.
+- **West Fargo Public Library** — first confirm whether its events already appear via `westfargoevents.com` (the city-wide aggregator). If yes, no fetcher needed; if no, build one. ID prefix `wfpl_`.
+- Per `AGENTS.md`: update both `src/index.ts` _and_ `src/refetch.ts` for each new fetcher. Add dedup pairs.
 
----
+### D. Google Reviews on venue links (decision needed)
 
-## 5. Category Filter Dropdown
+Original PLAN deferred this pending an API-key decision. Still deferred. Question to resolve before scoping:
 
-**Plan:**
-- Add `GET /api/categories` endpoint returning sorted distinct category names from `display_events`
-- Add `category` query param to `/api/events`; `queryDisplayEvents()` filters `WHERE categories LIKE ?`
-- UI: `<select id="categoryFilter">` below search bar, populated on load from `/api/categories`
-  - Default option: "All categories"
-  - On change: reset page, reload with filter applied
-- Mobile: full-width, same row as or below search group
+- Are we willing to enable Google Places API (~$17/1k requests, requires billing account)? If not, drop this from the plan entirely and close the loop.
+- If yes: fetch `place_id` + rating + review count once per venue, cache in a new `venue_ratings` table keyed by `(location, city)`, refresh weekly. Render a star chip next to the Maps link.
 
----
+### E. Same-source duplicates (two distinct problems)
 
-## 6. Library Events
+**Confirmed live on prod (`fargoings.com`, 2026-05-14):**
 
-**Fetchers to research + build:**
+1. **Exact-URL repeats** — On Fri 5/15, "Vista & Vines Blues, Jazz, & Wine by the Creekside" appeared **twice** with the identical URL `fargomoorhead.org/event/vista-...-by-the-creekside/4319/`. "Book Sale" same day, same pattern. Direct query against prod `/api/events?q=Vista` showed two rows with **different** `eventId`s (`69f58160…` and `69ff8155…`), `createdAt` identical (same fetch run), and ObjectId-embedded timestamps ~4 days apart — confirming upstream is returning the same logical event with regenerated `_id`s, and our upsert (keyed on `eventId`) can't merge them.
 
-| Library | Likely URL | Expected Format |
-|---------|-----------|-----------------|
-| Fargo Public Library | fargolibrary.org | Unknown - need to inspect |
-| Moorhead Public Library | ci.moorhead.mn.us or moorheadmn.gov | Unknown |
-| West Fargo Public Library | Already covered by westfargoevents.com? | Check if library events appear |
+2. **Near-dup reposts** — A poster publishes an event, deletes it, then re-posts with a slightly tweaked title or new slug. The repost gets a fresh `eventId`, so upsert doesn't merge it. Dedup also doesn't catch it: `findMatches()` in `src/index.ts:229–237` is invoked only across source *pairs* (`fargoStored × undergroundStored`, etc.). Same-source self-matching is never run, so within a single source these slip through.
 
 **Plan:**
-- Inspect each library's events page to find JSON feed / iCal / RSS / scraping target
-- Implement fetcher class per library following existing pattern (`fetchEvents()` + `transformToStoredEvent()`)
-- Add each to `src/index.ts` fetcher loop
-- IDs prefixed: `fpl_`, `mph_`, `wfpl_` to avoid collisions
+
+For (1) — exact-URL repeats: **SHIPPED locally; needs deploy + one-time refetch.**
+- `FargoFetcher.transformToStoredEvent()` now derives `eventId` from `sha1(url|date|startTime)` instead of upstream's volatile `_id`. Two upstream docs for the same logical event collapse onto one row via the existing upsert. Different `startTime`s still produce distinct rows, so Paradox's 6:00/6:15/6:30 PM events stay separate.
+- Verified locally with `npm start`: zero `(source, url, date, startTime)` groups with >1 row in fargomoorhead.org events. Vista and Book Sale each collapse to a single row.
+- **Deploy step:** after the new code lands on the VPS, run `npm run refetch -- --source fargomoorhead.org` once. Existing prod rows still carry the old volatile `_id`-based eventIds; without the refetch they'd linger as orphans alongside the new synthetic-ID rows.
+
+For (2) — same-source near-dups:
+- Add same-source passes to the dedup loop: `findMatches(undergroundStored, undergroundStored, 0.85)` and likewise for each source.
+- Skip self-pairs in `findMatches` (`if event1.eventId === event2.eventId continue`) and skip already-compared pairs (use a `Set<string>` keyed on `min(id1,id2)|max(id1,id2)`).
+- Use a **tighter threshold** for same-source (0.85+ vs. cross-source 0.65). Same venue + same time + same source is common for genuinely distinct events (Paradox runs Magic Modern + Magic Draft + Magic Commander simultaneously, all at 6:15 PM, all at Paradox), so title similarity needs to dominate.
+- When matched, keep the row with the more recent `updatedAt` (or higher event ID — assumes monotonic), drop the older. Record the merge in `matches` for audit.
+
+### F. Collapse same-venue events into a single row
+
+**Confirmed live on prod (2026-05-14):** Thu 5/14 has 3 Paradox events stacked (6:00 / 6:15 / 6:30 PM). Fri 5/15 has 5 Paradox events. After E.2 dedup these are likely real distinct events (different game systems), so collapse is a UX improvement, not a dedup fix.
+
+**Plan:** Client-side grouping in `renderRows()` keyed on `(date, location)` where group size ≥ 2. Render as a single row showing venue + count badge ("Paradox Comics & Games — 5 events"). Click expands to show the individual rows underneath. Default state: collapsed when 3+, expanded when 2. List view only — map already collapses spatially once B lands.
 
 ---
 
-## 7. Fix Paradox Comics Location
+## Suggested order
 
-**Problem:** Paradox Comics events come through fargounderground.com with `venue: null`, so `location` is null in the DB even though we know the venue.
-
-**Plan:**
-- Add `src/enrichment/venues.ts` with a static known-venues map:
-  ```ts
-  // title substring → { location, city, latitude, longitude }
-  const KNOWN_VENUES = [
-    { match: /paradox comics/i, location: "Paradox Comics, 242 Broadway N", city: "Fargo", lat: 46.877, lng: -96.789 }
-  ]
-  ```
-- Run enrichment in `rebuildDisplayEvents()`: for any event where `location IS NULL` and title matches a known venue pattern, backfill location + city + coords
-- Alternatively, run enrichment as a post-insert step in `insertEvent()` (simpler, data baked in at write time)
-- Chosen approach: **post-insert enrichment in `src/index.ts`** after fetching, before dedup — cleaner separation
-
----
-
-## Maybe: Collapse Paradox
-
-**Plan (if desired):**
-- Add a "Venue grouping" toggle in UI: collapses multiple events at the same venue on the same day into a single expandable row
-- Click the venue row to expand and see individual events
-- Would primarily benefit Paradox Comics (often 2–4 events per day)
-- Implementation: client-side grouping in `renderRows()` based on `location` field
-
----
-
-## Suggested Implementation Order
-
-1. **#7 Paradox Location** — Quick win, pure backend, no UI changes
-2. **#1 Sort by Time** — Visual polish, mostly UI
-3. **#5 Category Dropdown** — Small API + UI change, clean improvement
-4. **#2 Date Range Selectors** — API + UI, well-scoped
-5. **#6 Library Events** — Research-heavy, needs per-library investigation first
-6. **#4 Venue Links** — UI change, Google Maps link is easy; reviews optional
-7. **#3 Map View** — Largest item, needs new dep (Leaflet), schema migration, frontend work
-8. **Maybe: Collapse Paradox** — After #7 is done, see if still needed
+1. ~~**E.1 — exact-URL repeats**~~ — shipped locally 2026-05-14; needs deploy + one-time `npm run refetch -- --source fargomoorhead.org`.
+2. **E.2 — same-source near-dup detection** (medium; this is the user-reported "post, delete, repost" case)
+3. **A — map loads all events** (small, high-impact; map view is largely useless without it)
+4. **B — marker clustering** (small, naturally follows A)
+5. **F — collapse same-venue rows** (UX polish; do after E so we're collapsing real distinct events, not duplicates)
+6. **C — Moorhead + West Fargo libraries** (research-heavy)
+7. **D — Google Reviews decision** (one conversation, not coding work)
