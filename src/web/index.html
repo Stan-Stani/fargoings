@@ -904,14 +904,24 @@
         tbody tr.day-marker td::before {
           content: none;
         }
-        /* Mobile: the venue group header tells you the venue and day, so
-           grouped child cards drop the redundant location row, drop the
-           "Thu, 5/14/2026" date prefix (only the time stays), and rely on
-           a tinted background + tighter spacing for the nesting cue. */
+        /* Mobile: the entire venue group renders as one tall card. The
+           header has top-rounded corners and the last child has bottom-
+           rounded corners; intermediate edges merge so header + children
+           share a single continuous outer border. Grouped child cards
+           also drop the redundant location row and the day-of-week date
+           prefix (the day marker above already specifies the date). */
         tbody tr.venue-group-header {
-          margin-bottom: 4px;
           background: var(--group-header-bg);
           border: 1px solid var(--group-border);
+        }
+        tbody tr.venue-group-header[data-expanded="false"] {
+          margin-bottom: 8px;
+          border-radius: 10px;
+        }
+        tbody tr.venue-group-header[data-expanded="true"] {
+          margin-bottom: 0;
+          border-radius: 10px 10px 0 0;
+          border-bottom: 1px solid var(--border-soft);
         }
         tbody tr.venue-group-header td {
           display: block;
@@ -929,18 +939,29 @@
         tbody tr.venue-group-header .venue-group-time-range {
           margin-left: auto;
         }
+        /* Children stack flush against the header and each other to form
+           one continuous card. */
         tbody tr.venue-group-child {
           background: var(--group-container-bg);
-          margin-bottom: 4px;
+          margin-bottom: 0;
+          border: 1px solid var(--group-border);
+          border-top: 0;
+          border-bottom: 1px solid var(--row-border);
+          border-radius: 0;
           box-shadow: none;
         }
         tbody tr.venue-group-child.event-row {
-          padding: 8px 10px;
+          padding: 8px 10px 8px 18px;
           box-shadow: none;
         }
-        /* The desktop card-in-card rules add a left border + vertical rail
-           on the first td. Both leak into mobile because the table
-           transforms to a block layout; neutralize them here. */
+        tbody tr.venue-group-child-last {
+          margin-bottom: 8px;
+          border-bottom: 1px solid var(--group-border);
+          border-bottom-left-radius: 10px;
+          border-bottom-right-radius: 10px;
+        }
+        /* Neutralize the desktop card-in-card per-cell border + ::before
+           rail; on mobile the cell-level borders would draw stray lines. */
         tbody tr.venue-group-child td:first-child {
           border-left: 0;
           padding-left: 0;
@@ -964,9 +985,6 @@
         tbody tr.venue-group-child .datetime-cell {
           color: var(--muted);
           font-size: 13px;
-        }
-        tbody tr.venue-group-child-last {
-          margin-bottom: 12px;
         }
         .pagination {
           margin-top: 8px;
