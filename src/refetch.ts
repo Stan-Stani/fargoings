@@ -1,5 +1,5 @@
 import { EventDatabase } from "./db/database"
-import { findMatches } from "./dedup/matcher"
+import { findMatches, findSelfMatches } from "./dedup/matcher"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
@@ -247,6 +247,11 @@ async function main() {
       ...findMatches(undergroundStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
       ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
+      ...findSelfMatches(fargoStored),
+      ...findSelfMatches(undergroundStored),
+      ...findSelfMatches(downtownStored),
+      ...findSelfMatches(westFargoStored),
+      ...findSelfMatches(fargoLibraryStored),
     ]
 
     db.clearMatches()

@@ -413,17 +413,26 @@ export class EventDatabase {
       )
       .all() as StoredEvent[]
 
-    // Build result with alt URLs for matched events
+    // Build result with alt URLs for matched events.
+    // Convention: eventId1 is the dropped row, eventId2 is the kept row.
+    // For same-source matches (re-posts, recurring-id churn), we still drop
+    // eventId1 but don't expose its URL as an alternate — both URLs point to
+    // the same domain and the dropped one is usually a stale slug.
     const matchMap = new Map<string, { url: string; source: string }>()
     const matches = this.getMatches("medium")
+    const lookupStmt = this.db.prepare(
+      "SELECT url, source FROM events WHERE eventId = ?",
+    )
     for (const match of matches) {
-      // eventId2 is fargounderground, eventId1 is fargomoorhead
-      const event1 = this.db
-        .prepare("SELECT url, source FROM events WHERE eventId = ?")
-        .get(match.eventId1) as { url: string; source: string } | undefined
-      if (event1) {
-        matchMap.set(match.eventId2, { url: event1.url, source: event1.source })
-      }
+      const event1 = lookupStmt.get(match.eventId1) as
+        | { url: string; source: string }
+        | undefined
+      if (!event1) continue
+      const event2 = lookupStmt.get(match.eventId2) as
+        | { url: string; source: string }
+        | undefined
+      if (event2 && event2.source === event1.source) continue
+      matchMap.set(match.eventId2, { url: event1.url, source: event1.source })
     }
 
     const result: (StoredEvent & { altUrl?: string; altSource?: string })[] = []

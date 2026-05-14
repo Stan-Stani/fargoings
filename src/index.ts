@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { EventDatabase } from "./db/database"
-import { findMatches } from "./dedup/matcher"
+import { findMatches, findSelfMatches } from "./dedup/matcher"
 import { decodeHtmlEntities } from "./dedup/normalize"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
@@ -224,7 +224,8 @@ async function main() {
 
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
 
-    // Find matches between all source pairs
+    // Find matches between all source pairs, plus within each source
+    // (catches re-posts after a delete, recurring-event ID churn, etc.)
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
@@ -235,6 +236,11 @@ async function main() {
       ...findMatches(undergroundStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
       ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
+      ...findSelfMatches(fargoStored),
+      ...findSelfMatches(undergroundStored),
+      ...findSelfMatches(downtownStored),
+      ...findSelfMatches(westFargoStored),
+      ...findSelfMatches(fargoLibraryStored),
     ]
 
     db.clearMatches()

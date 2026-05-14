@@ -206,6 +206,50 @@ export function scoreMatch(
 }
 
 /**
+ * Find duplicates within a single source (same poster reposting after a delete,
+ * upstream returning the same event twice with different ids, etc.).
+ *
+ * Uses a tighter default threshold than cross-source matching because legitimate
+ * distinct events at the same venue + same date + same start time are common
+ * within one source (e.g. Paradox runs multiple Magic formats simultaneously).
+ *
+ * Output is normalized so eventId1 is the *older* row (lower db id, dropped by
+ * getDeduplicatedEvents) and eventId2 is the *newer* row (kept).
+ */
+export function findSelfMatches(
+  events: StoredEvent[],
+  minScore: number = 0.85
+): MatchScore[] {
+  const byDate = new Map<string, StoredEvent[]>()
+  for (const event of events) {
+    const existing = byDate.get(event.date) || []
+    existing.push(event)
+    byDate.set(event.date, existing)
+  }
+
+  const matches: MatchScore[] = []
+  for (const dayEvents of byDate.values()) {
+    for (let i = 0; i < dayEvents.length; i++) {
+      for (let j = i + 1; j < dayEvents.length; j++) {
+        const a = dayEvents[i]
+        const b = dayEvents[j]
+        if (a.eventId === b.eventId) continue
+
+        const [older, newer] = a.id < b.id ? [a, b] : [b, a]
+        const score = scoreMatch(older, newer)
+
+        if (score.totalScore >= minScore) {
+          matches.push(score)
+        }
+      }
+    }
+  }
+
+  matches.sort((a, b) => b.totalScore - a.totalScore)
+  return matches
+}
+
+/**
  * Find all potential matches between two sets of events
  */
 export function findMatches(
