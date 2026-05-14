@@ -904,9 +904,10 @@
         tbody tr.day-marker td::before {
           content: none;
         }
-        /* Mobile: tinted header + tinted child cards with a left-rail accent
-           to read as nested inside a venue group. True per-cell nesting
-           borders are impractical inside the stacked-card layout. */
+        /* Mobile: the venue group header tells you the venue and day, so
+           grouped child cards drop the redundant location row, drop the
+           "Thu, 5/14/2026" date prefix (only the time stays), and rely on
+           a tinted background + tighter spacing for the nesting cue. */
         tbody tr.venue-group-header {
           margin-bottom: 4px;
           background: var(--group-header-bg);
@@ -929,9 +930,23 @@
           margin-left: auto;
         }
         tbody tr.venue-group-child {
-          margin-left: 14px;
           background: var(--group-container-bg);
-          border-left: 3px solid var(--group-border);
+          margin-bottom: 4px;
+          box-shadow: none;
+        }
+        tbody tr.venue-group-child.event-row {
+          padding: 8px 10px;
+          box-shadow: none;
+        }
+        tbody tr.venue-group-child .location-cell {
+          display: none;
+        }
+        tbody tr.venue-group-child .datetime-day {
+          display: none;
+        }
+        tbody tr.venue-group-child .datetime-cell {
+          color: var(--muted);
+          font-size: 13px;
         }
         tbody tr.venue-group-child-last {
           margin-bottom: 12px;

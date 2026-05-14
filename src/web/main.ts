@@ -254,26 +254,26 @@ if (filtersToggleBtnEl && filtersMenuEl) {
   })
 }
 
-function formatDate(date: string, time: string | null): string {
+function formatDay(date: string): string {
   const [year, month, day] = date.split("-").map(Number)
   const localDate = new Date(year, month - 1, day)
   const dayOfWeek = localDate.toLocaleDateString(undefined, {
     weekday: "short",
   })
-  const md = month + "/" + day + "/" + year
-  if (!time) return `${dayOfWeek}, ${md}`
+  return `${dayOfWeek}, ${month}/${day}/${year}`
+}
+
+function formatTime(time: string | null): string {
+  if (!time) return ""
   const [h, m] = time.split(":").map(Number)
   const hour = h % 12 || 12
   const ampm = h < 12 ? "AM" : "PM"
-  return (
-    `${dayOfWeek}, ${md}` +
-    " " +
-    hour +
-    ":" +
-    String(m).padStart(2, "0") +
-    " " +
-    ampm
-  )
+  return `${hour}:${String(m).padStart(2, "0")} ${ampm}`
+}
+
+function formatDate(date: string, time: string | null): string {
+  const t = formatTime(time)
+  return t ? `${formatDay(date)} ${t}` : formatDay(date)
 }
 
 function formatDayLabel(date: string): string {
@@ -584,7 +584,18 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
   const dateTd = document.createElement("td")
   dateTd.setAttribute("data-label", "Date")
   dateTd.className = "datetime-cell"
-  dateTd.textContent = formatDate(item.date, item.startTime)
+  const dayPart = document.createElement("span")
+  dayPart.className = "datetime-day"
+  dayPart.textContent = formatDay(item.date)
+  dateTd.appendChild(dayPart)
+  const timeText = formatTime(item.startTime)
+  if (timeText) {
+    dateTd.appendChild(document.createTextNode(" "))
+    const timeEl = document.createElement("span")
+    timeEl.className = "datetime-time"
+    timeEl.textContent = timeText
+    dateTd.appendChild(timeEl)
+  }
 
   const locationTd = document.createElement("td")
   locationTd.setAttribute("data-label", "Location")
