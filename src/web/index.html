@@ -938,6 +938,23 @@
           padding: 8px 10px;
           box-shadow: none;
         }
+        /* The desktop card-in-card rules add a left border + vertical rail
+           on the first td. Both leak into mobile because the table
+           transforms to a block layout; neutralize them here. */
+        tbody tr.venue-group-child td:first-child {
+          border-left: 0;
+          padding-left: 0;
+          position: static;
+        }
+        tbody tr.venue-group-child td:first-child::before {
+          content: none;
+        }
+        tbody tr.venue-group-child td:last-child {
+          border-right: 0;
+        }
+        tbody tr.venue-group-child-last td {
+          border-bottom: 0;
+        }
         tbody tr.venue-group-child .location-cell {
           display: none;
         }
