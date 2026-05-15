@@ -25,6 +25,11 @@ export interface MoorheadLibraryEvent {
  * server-side to a single branch; Moorhead's branch id is 3119 (from
  * `api.communico.co/v1/larl/locations`). Each occurrence of a recurring
  * series has a unique `id`, so `mph_${id}` is collision-free.
+ *
+ * larl.libnet.info's AWS WAF 403s the production VPS's datacenter IP, so
+ * set `MPH_EVENTS_URL` to a Cloudflare Worker relay (CF egress is not
+ * blocked) — same approach as the West Fargo feed. See
+ * infra/larl-feed-worker/README.md.
  */
 export class MoorheadLibraryFetcher {
   private readonly timeZone = "America/Chicago"
@@ -52,7 +57,19 @@ export class MoorheadLibraryFetcher {
         ages: [],
         types: [],
       })
-      const url = `${this.baseUrl}?event_type=0&req=${encodeURIComponent(req)}`
+      // larl.libnet.info's AWS WAF returns 403 to datacenter IPs (the VPS),
+      // so production sets MPH_EVENTS_URL to a Cloudflare Worker relay
+      // (CF egress is not blocked). The relay base already carries ?key=…,
+      // so the query params are appended with "&". See infra/larl-feed-worker.
+      const relay = process.env.MPH_EVENTS_URL
+      const query = `event_type=0&req=${encodeURIComponent(req)}`
+      let url: string
+      if (relay) {
+        console.log(`   Fetching via relay: ${relay.split("?")[0]}`)
+        url = `${relay}${relay.includes("?") ? "&" : "?"}${query}`
+      } else {
+        url = `${this.baseUrl}?${query}`
+      }
 
       const response = await fetchWithRetry(
         url,

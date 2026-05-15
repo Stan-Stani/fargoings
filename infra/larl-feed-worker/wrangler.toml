@@ -1,0 +1,7 @@
+name = "larl-feed"
+main = "worker.js"
+compatibility_date = "2026-05-15"
+workers_dev = true
+
+# Secret (NOT stored here): LARL_KEY — set with `npx wrangler secret put LARL_KEY`.
+# Must equal the ?key= value in the VPS /root/fargoings/.env MPH_EVENTS_URL.
