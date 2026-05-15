@@ -46,7 +46,7 @@ async function main() {
       "westfargolibrary.org",
     )
     const moorheadLibraryLastUpdated = db.getSourceLastUpdatedDate(
-      "moorheadlibrary.org",
+      "larl.org",
     )
     const freshCount = [
       fargoLastUpdated,
@@ -254,24 +254,24 @@ async function main() {
       }
     }
 
-    // Fetch from moorheadlibrary.org
+    // Fetch from larl.org
     console.log(
-      `   moorheadlibrary.org cache date: ${moorheadLibraryLastUpdated || "never"} (today: ${today})`,
+      `   larl.org cache date: ${moorheadLibraryLastUpdated || "never"} (today: ${today})`,
     )
     if (moorheadLibraryLastUpdated === today) {
       console.log(
-        "⏭️  Using cached moorheadlibrary.org events (fresh today).\n",
+        "⏭️  Using cached larl.org events (fresh today).\n",
       )
     } else {
       try {
         console.log(
-          "📥 Fetching events from moorheadlibrary.org (next 2 weeks)...",
+          "📥 Fetching events from larl.org (next 2 weeks)...",
         )
         const moorheadLibraryEvents =
           await moorheadLibraryFetcher.fetchEvents()
         console.log(`✓ Fetched ${moorheadLibraryEvents.length} events\n`)
 
-        console.log("💾 Storing moorheadlibrary.org events...")
+        console.log("💾 Storing larl.org events...")
         let moorheadLibraryInserted = 0
         for (const event of moorheadLibraryEvents) {
           const storedEvent =
@@ -279,12 +279,12 @@ async function main() {
           db.insertEvent(storedEvent)
           moorheadLibraryInserted++
         }
-        db.setSourceLastUpdatedDate("moorheadlibrary.org", today)
+        db.setSourceLastUpdatedDate("larl.org", today)
         console.log(`✓ Processed ${moorheadLibraryInserted} events\n`)
       } catch (error) {
-        logError("❌ moorheadlibrary.org fetch failed:", error)
+        logError("❌ larl.org fetch failed:", error)
         console.log(
-          "⚠️  Skipping moorheadlibrary.org refresh; keeping existing cached events.\n",
+          "⚠️  Skipping larl.org refresh; keeping existing cached events.\n",
         )
       }
     }
@@ -306,7 +306,7 @@ async function main() {
 
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
-    const moorheadLibraryStored = db.getEventsBySource("moorheadlibrary.org")
+    const moorheadLibraryStored = db.getEventsBySource("larl.org")
 
     // Find matches between all source pairs, plus within each source
     // (catches re-posts after a delete, recurring-event ID churn, etc.)

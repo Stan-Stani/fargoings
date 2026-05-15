@@ -151,7 +151,7 @@ export class MoorheadLibraryFetcher {
       city: "Moorhead",
       imageUrl: null,
       categories: JSON.stringify(categories),
-      source: "moorheadlibrary.org",
+      source: "larl.org",
     }
   }
 }

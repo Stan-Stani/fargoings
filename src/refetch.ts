@@ -17,7 +17,7 @@ type SourceId =
   | "westfargoevents.com"
   | "fargolibrary.org"
   | "westfargolibrary.org"
-  | "moorheadlibrary.org"
+  | "larl.org"
 
 const ALL_SOURCES: SourceId[] = [
   "fargomoorhead.org",
@@ -26,7 +26,7 @@ const ALL_SOURCES: SourceId[] = [
   "westfargoevents.com",
   "fargolibrary.org",
   "westfargolibrary.org",
-  "moorheadlibrary.org",
+  "larl.org",
 ]
 
 const SOURCE_ALIASES: Record<string, SourceId> = {
@@ -40,9 +40,10 @@ const SOURCE_ALIASES: Record<string, SourceId> = {
   fargolibrary: "fargolibrary.org",
   westfargolibrary: "westfargolibrary.org",
   wfpl: "westfargolibrary.org",
-  moorhead: "moorheadlibrary.org",
-  moorheadlibrary: "moorheadlibrary.org",
-  mph: "moorheadlibrary.org",
+  moorhead: "larl.org",
+  moorheadlibrary: "larl.org",
+  mph: "larl.org",
+  larl: "larl.org",
 }
 
 function parseSelectedSources(argv: string[]): Set<SourceId> {
@@ -256,27 +257,27 @@ async function main() {
       console.log("⏭️  Skipping westfargolibrary.org\n")
     }
 
-    // Fetch moorheadlibrary.org
-    if (selectedSources.has("moorheadlibrary.org")) {
-      console.log("📥 Fetching moorheadlibrary.org...")
+    // Fetch larl.org
+    if (selectedSources.has("larl.org")) {
+      console.log("📥 Fetching larl.org...")
       try {
         const moorheadLibraryFetcher = new MoorheadLibraryFetcher()
         const moorheadLibraryEvents =
           await moorheadLibraryFetcher.fetchEvents()
-        db.deleteEventsBySource("moorheadlibrary.org")
+        db.deleteEventsBySource("larl.org")
         for (const event of moorheadLibraryEvents) {
           db.insertEvent(moorheadLibraryFetcher.transformToStoredEvent(event))
         }
-        db.setSourceLastUpdatedDate("moorheadlibrary.org", today)
+        db.setSourceLastUpdatedDate("larl.org", today)
         console.log(`✓ Stored ${moorheadLibraryEvents.length} events\n`)
       } catch (error) {
-        logError("❌ moorheadlibrary.org refetch failed:", error)
+        logError("❌ larl.org refetch failed:", error)
         console.log(
-          "⚠️  Keeping existing moorheadlibrary.org events (no delete performed).\n",
+          "⚠️  Keeping existing larl.org events (no delete performed).\n",
         )
       }
     } else {
-      console.log("⏭️  Skipping moorheadlibrary.org\n")
+      console.log("⏭️  Skipping larl.org\n")
     }
 
     // Enrich events with known venue locations where data is missing
@@ -295,7 +296,7 @@ async function main() {
     const westFargoStored = db.getEventsBySource("westfargoevents.com")
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
-    const moorheadLibraryStored = db.getEventsBySource("moorheadlibrary.org")
+    const moorheadLibraryStored = db.getEventsBySource("larl.org")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
