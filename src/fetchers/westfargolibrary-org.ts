@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { decodeHtmlEntities } from "../dedup/normalize"
 import { logError } from "../log"
 import { StoredEvent } from "../types/event"
@@ -26,6 +27,11 @@ export interface WestFargoLibraryEvent {
  * "West Fargo Library" calendar category, so the iCal export is already
  * scoped to library-hosted programming. The RSS feed is capped at 10 items,
  * so we use the iCal export, which returns the full forward range.
+ *
+ * CivicPlus blocks datacenter IP ranges, so the production VPS cannot reach
+ * the feed directly. Set `WFPL_ICS_FILE=/path/to/feed.ics` to parse a local
+ * copy instead of fetching over HTTP — fetch the feed from a residential/
+ * office IP, transfer the .ics to the VPS, and point this env var at it.
  */
 export class WestFargoLibraryFetcher {
   private readonly timeZone = "America/Chicago"
@@ -42,14 +48,20 @@ export class WestFargoLibraryFetcher {
         `   Date range (${this.timeZone}): ${dateRange.start.month}/${dateRange.start.day}/${dateRange.start.year} to ${dateRange.end.month}/${dateRange.end.day}/${dateRange.end.year}`,
       )
 
-      const response = await fetchWithRetry(
-        this.feedUrl,
-        { headers: DEFAULT_BROWSER_HEADERS },
-        "West Fargo Library events fetch",
-        4,
-      )
-
-      const ical = await response.text()
+      const icsFile = process.env.WFPL_ICS_FILE
+      let ical: string
+      if (icsFile) {
+        console.log(`   Reading iCal from local file: ${icsFile}`)
+        ical = readFileSync(icsFile, "utf8")
+      } else {
+        const response = await fetchWithRetry(
+          this.feedUrl,
+          { headers: DEFAULT_BROWSER_HEADERS },
+          "West Fargo Library events fetch",
+          4,
+        )
+        ical = await response.text()
+      }
       const parsed = this.parseICal(ical)
 
       // The feed expands recurring events far into the future; keep only the
