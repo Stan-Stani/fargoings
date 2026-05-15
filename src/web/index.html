@@ -221,6 +221,35 @@
         cursor: pointer;
         max-width: 220px;
       }
+      .sports-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 13px;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: none;
+      }
+      .sports-toggle input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        cursor: pointer;
+        accent-color: var(--text);
+      }
+      .sports-toggle:has(input:checked) {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+      }
+      .sports-toggle:has(input:checked) input {
+        accent-color: var(--bg);
+      }
       .search-group {
         display: flex;
         align-items: stretch;
@@ -776,6 +805,9 @@
           justify-content: space-between;
           gap: 8px;
           margin-bottom: 8px;
+        }
+        .sports-toggle {
+          align-self: flex-start;
         }
         .mobile-sort-wrap {
           display: block;
