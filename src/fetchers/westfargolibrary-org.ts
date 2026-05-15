@@ -28,10 +28,15 @@ export interface WestFargoLibraryEvent {
  * scoped to library-hosted programming. The RSS feed is capped at 10 items,
  * so we use the iCal export, which returns the full forward range.
  *
- * CivicPlus blocks datacenter IP ranges, so the production VPS cannot reach
- * the feed directly. Set `WFPL_ICS_FILE=/path/to/feed.ics` to parse a local
- * copy instead of fetching over HTTP — fetch the feed from a residential/
- * office IP, transfer the .ics to the VPS, and point this env var at it.
+ * West Fargo's web server (207.38.72.44, shared with westfargond.gov)
+ * firewalls the production VPS's DigitalOcean IP, so it cannot reach the
+ * feed directly. Two overrides handle this (file wins if both are set):
+ *   - `WFPL_ICS_FILE=/path/to/feed.ics` — parse a local copy instead of
+ *     fetching (fetch off-VPS, transfer the .ics, point this at it).
+ *   - `WFPL_ICS_URL=https://…` — fetch from an alternate URL instead of the
+ *     origin. Production uses a Cloudflare Worker relay (Cloudflare egress
+ *     is not blocked) so the weekly cron `npm start` works unattended.
+ *     See infra/wfpl-feed-worker/README.md.
  */
 export class WestFargoLibraryFetcher {
   private readonly timeZone = "America/Chicago"
@@ -49,13 +54,18 @@ export class WestFargoLibraryFetcher {
       )
 
       const icsFile = process.env.WFPL_ICS_FILE
+      const icsUrl = process.env.WFPL_ICS_URL
       let ical: string
       if (icsFile) {
         console.log(`   Reading iCal from local file: ${icsFile}`)
         ical = readFileSync(icsFile, "utf8")
       } else {
+        const url = icsUrl || this.feedUrl
+        if (icsUrl) {
+          console.log(`   Fetching iCal via relay: ${icsUrl.split("?")[0]}`)
+        }
         const response = await fetchWithRetry(
-          this.feedUrl,
+          url,
           { headers: DEFAULT_BROWSER_HEADERS },
           "West Fargo Library events fetch",
           4,

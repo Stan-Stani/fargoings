@@ -1,3 +1,4 @@
+import "dotenv/config"
 import { EventDatabase } from "./db/database"
 import { findMatches, findSelfMatches } from "./dedup/matcher"
 import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
