@@ -95,25 +95,30 @@ backlog — pick them up opportunistically, not as the headline.
 We're now fast at new fetchers (Tribe, CivicPlus, Communico, CF relays for
 blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
 
-- **Drekker Brewing** — The Events Calendar (Tribe) REST at
-  `drekkerbrewing.com/wp-json/tribe/events/v1/events`. Reuses
-  `fetchTribeEvents` in `shared.ts` — ~trivial, do first. (Returned 0 events
-  the day scouted; confirm it populates when they have events.)
-- **Sanctuary Events Center** + **Fargo Brewing** — Squarespace. Squarespace
-  collections expose JSON (`?format=json` was HTML on the root — need the
-  right collection path). One new pattern, then both are cheap.
+- ✅ **Drekker Brewing** — SHIPPED 2026-05-15 (`drekkerbrewing-com.ts`,
+  Tribe REST via `fetchTribeEvents`). 0 events in-window at ship; auto-
+  populates. Code on `main`; rides next VPS deploy.
+- **NEXT — NDSU + MSUM athletics (Sidearm Sports RSS)**, confirmed
+  2026-05-15: `gobison.com/calendar.ashx/calendar.rss` (85 items) and
+  `msumdragons.com/calendar.ashx/calendar.rss` (61). One fetcher
+  parameterized by base URL (like `fetchTribeEvents`) → two high-draw
+  schedules (NDSU FB/BB are major regional events). Notes: `<ev:startdate>`
+  is sometimes date-only (TBD) vs full UTC ISO → convert to America/Chicago;
+  title encodes `[L]`home/`[A]`away/`[N]`neutral + opponent; `<link>` is
+  `admin.gobison.com/...` (rewrite to `www.`). Concordia (`cobbers.com`) is
+  NOT Sidearm (404) — separate scope.
 - **FargoDome** + **Fargo Force** — Ticketmaster-backed. Ticketmaster
-  Discovery API (free key, by venue id) is clean → same kind of "enable an
-  API key?" decision as D. Decide once, covers both.
+  Discovery API (free key, by venue id) → "enable an API key?" decision,
+  same call as D (Google Reviews). **Needs user decision before build.**
 - **Plains Art Museum** — WordPress but NOT Tribe (`rest_no_route`); identify
   its events plugin/endpoint. Moderate.
-- **NDSU / MSUM / Concordia** — campus calendars; platform not yet ID'd
-  (guessed Localist subdomains 404'd). Research each; likely Localist/Trumba
-  with clean JSON once found. High volume when landed.
-- **FM RedHawks** (American Association, indie — no MiLB API; Squarespace
-  site), **Fargo Theatre** (406'd our UA — needs real-UA/scrape; ticketing
-  likely Spektrix/Agile), **Red River Zoo**, **Fargo Park District** —
-  unknown platforms; scout + scope individually.
+- **Concordia** campus + athletics, **NDSU/MSUM academic** calendars —
+  platforms still unidentified; research when convenient (high volume).
+- **Fargo Theatre** (406'd our UA — real-UA/scrape; ticketing likely
+  Spektrix/Agile), **Red River Zoo**, **Fargo Park District** — unknown
+  platforms; scout + scope individually.
+- ❌ **Dropped:** Sanctuary Events Center (wedding/corporate venue — no
+  public event feed) and Fargo Brewing (business closing; site expired).
 
 Per `AGENTS.md`: every new fetcher touches `index.ts` _and_ `refetch.ts`
 (+ dedup pairs, alias, optional venue enrichment & coords for the map).
