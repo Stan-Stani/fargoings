@@ -85,12 +85,62 @@ Client-side grouping in `renderRows()` keyed on `(date, location)`. When ≥3 ev
 
 ---
 
-## Suggested order
+## Roadmap (set 2026-05-15)
 
-1. ~~**E.1 — exact-URL repeats**~~ — shipped 2026-05-14; deploy needs one-time `npm run refetch -- --source fargomoorhead.org`.
-2. ~~**E.2 — same-source near-dup detection**~~ — shipped 2026-05-14.
-3. ~~**F — collapse same-venue rows**~~ — shipped 2026-05-14.
-4. **A — map loads all events** (small, high-impact; map view currently shows only the loaded page)
-5. **B — marker clustering** (small, naturally follows A)
-6. ~~**C — Moorhead + West Fargo libraries**~~ — fully shipped 2026-05-15 (both via Cloudflare Worker relays for datacenter-IP/WAF blocks).
-7. **D — Google Reviews decision** (one conversation, not coding work)
+Sequenced. A/B (map polish) and D (Google Reviews key decision) are now
+backlog — pick them up opportunistically, not as the headline.
+
+### Phase 1 — Marquee venue coverage (the real product value)
+
+We're now fast at new fetchers (Tribe, CivicPlus, Communico, CF relays for
+blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
+
+- **Drekker Brewing** — The Events Calendar (Tribe) REST at
+  `drekkerbrewing.com/wp-json/tribe/events/v1/events`. Reuses
+  `fetchTribeEvents` in `shared.ts` — ~trivial, do first. (Returned 0 events
+  the day scouted; confirm it populates when they have events.)
+- **Sanctuary Events Center** + **Fargo Brewing** — Squarespace. Squarespace
+  collections expose JSON (`?format=json` was HTML on the root — need the
+  right collection path). One new pattern, then both are cheap.
+- **FargoDome** + **Fargo Force** — Ticketmaster-backed. Ticketmaster
+  Discovery API (free key, by venue id) is clean → same kind of "enable an
+  API key?" decision as D. Decide once, covers both.
+- **Plains Art Museum** — WordPress but NOT Tribe (`rest_no_route`); identify
+  its events plugin/endpoint. Moderate.
+- **NDSU / MSUM / Concordia** — campus calendars; platform not yet ID'd
+  (guessed Localist subdomains 404'd). Research each; likely Localist/Trumba
+  with clean JSON once found. High volume when landed.
+- **FM RedHawks** (American Association, indie — no MiLB API; Squarespace
+  site), **Fargo Theatre** (406'd our UA — needs real-UA/scrape; ticketing
+  likely Spektrix/Agile), **Red River Zoo**, **Fargo Park District** —
+  unknown platforms; scout + scope individually.
+
+Per `AGENTS.md`: every new fetcher touches `index.ts` _and_ `refetch.ts`
+(+ dedup pairs, alias, optional venue enrichment & coords for the map).
+
+### Phase 2 — Discovery / SEO
+
+Crawlable per-event pages (own route, not just outbound links) +
+`schema.org/Event` JSON-LD + `sitemap.xml`. Goal: fargoings surfaces in
+Google event results / "things to do in Fargo" searches.
+
+### Phase 3 — Stickiness
+
+Per-event "Add to Calendar" (Google + `.ics`); a fargoings-owned
+iCal/RSS feed users can subscribe to (we consume these — now emit one);
+auto-generated "This weekend in Fargo" digest page, optional Bluesky/Reddit
+post from the weekly cron.
+
+### Phase 4 — Reliability / health
+
+Per-source health: row count + last-success per fetcher; alert when a
+source errors or returns 0 (the West Fargo / LARL blocks failed silently —
+that must page us, not rot). Parser regression tests so upstream HTML/JSON
+shape changes are caught before a deploy.
+
+### Backlog (unscheduled)
+
+- **A — map loads all matching events** (currently only the loaded page).
+- **B — map marker clustering** (follows A).
+- **D — Google Reviews** on venue links — needs the Places API-key decision;
+  fold into the Phase 1 Ticketmaster "enable a paid/keyed API?" call.
