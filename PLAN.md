@@ -36,12 +36,16 @@ _Last refreshed: 2026-05-14. Current version: v1.1.9._
 
 ### C. Library Events: Moorhead and West Fargo
 
-**Status:** Fargo Public Library is shipped (`src/fetchers/fargolibrary-org.ts`, hitting `fargond.gov/programdata`). The other two libraries are still missing.
+**Status:** Fargo Public Library shipped (`src/fetchers/fargolibrary-org.ts`). **West Fargo Public Library shipped 2026-05-15** (see below). Moorhead still missing.
 
-**Plan:**
-- **Moorhead Public Library** — inspect `lakeagassiz.com` and `cityofmoorhead.com/library` for an events feed (JSON, iCal, or RSS). Build `src/fetchers/moorheadlibrary-org.ts` following the existing fetcher pattern. ID prefix `mph_`.
-- **West Fargo Public Library** — first confirm whether its events already appear via `westfargoevents.com` (the city-wide aggregator). If yes, no fetcher needed; if no, build one. ID prefix `wfpl_`.
-- Per `AGENTS.md`: update both `src/index.ts` _and_ `src/refetch.ts` for each new fetcher. Add dedup pairs.
+**West Fargo Public Library — SHIPPED 2026-05-15:**
+- Confirmed it is *not* covered by `westfargoevents.com` (queried that aggregator's venue list — no library venue).
+- The CivicPlus RSS feed is capped at 10 items. Used the iCal export instead: `westfargolibrary.org/common/modules/iCalendar/iCalendar.aspx?catID=25&feed=calendar` — `catID=25` is the "West Fargo Library" calendar category, so it's already scoped to library programming and returns the full forward range.
+- `src/fetchers/westfargolibrary-org.ts` — minimal RFC 5545 parser (line unfolding, VEVENT field extraction). Source id `westfargolibrary.org`, ID prefix `wfpl_${uid}_${date}` (recurring entries reuse one UID across dates, so the date is part of the key or the upsert collapses every occurrence). Local wall-clock times kept as-is (no VPS-tz shift). Closure notices (`LIBRARY CLOSED/CLOSING/OPEN …`) dropped. Wired into `index.ts` + `refetch.ts` (alias `westfargolibrary`/`wfpl`) with dedup pairs + self-match. Verified: 11 events in window flow through to `display_events`.
+
+**Moorhead Public Library — still open:**
+- Part of Lake Agassiz Regional Library (LARL). `larl.org/events/` embeds the **LibNet/Communico** calendar at `larl.libnet.info`. A naive `eeventcaldata` probe returned `[]` — needs reverse-engineering of LibNet's actual JSON endpoint/params and a way to filter to the Moorhead branch (LARL is multi-branch). This is the research-heavy remainder.
+- Build `src/fetchers/moorheadlibrary-org.ts`, ID prefix `mph_`. Per `AGENTS.md`: update both `src/index.ts` _and_ `src/refetch.ts`; add dedup pairs.
 
 ### D. Google Reviews on venue links (decision needed)
 
@@ -84,5 +88,5 @@ Client-side grouping in `renderRows()` keyed on `(date, location)`. When ≥3 ev
 3. ~~**F — collapse same-venue rows**~~ — shipped 2026-05-14.
 4. **A — map loads all events** (small, high-impact; map view currently shows only the loaded page)
 5. **B — marker clustering** (small, naturally follows A)
-6. **C — Moorhead + West Fargo libraries** (research-heavy)
+6. ~~**C — West Fargo Public Library**~~ — shipped 2026-05-15. **Moorhead PL** still open (LibNet API reverse-engineering + branch filter).
 7. **D — Google Reviews decision** (one conversation, not coding work)

@@ -5,6 +5,7 @@ import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
+import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
 import { logError } from "./log"
 
 type SourceId =
@@ -13,6 +14,7 @@ type SourceId =
   | "downtownfargo.com"
   | "westfargoevents.com"
   | "fargolibrary.org"
+  | "westfargolibrary.org"
 
 const ALL_SOURCES: SourceId[] = [
   "fargomoorhead.org",
@@ -20,6 +22,7 @@ const ALL_SOURCES: SourceId[] = [
   "downtownfargo.com",
   "westfargoevents.com",
   "fargolibrary.org",
+  "westfargolibrary.org",
 ]
 
 const SOURCE_ALIASES: Record<string, SourceId> = {
@@ -31,6 +34,8 @@ const SOURCE_ALIASES: Record<string, SourceId> = {
   westfargo: "westfargoevents.com",
   library: "fargolibrary.org",
   fargolibrary: "fargolibrary.org",
+  westfargolibrary: "westfargolibrary.org",
+  wfpl: "westfargolibrary.org",
 }
 
 function parseSelectedSources(argv: string[]): Set<SourceId> {
@@ -221,6 +226,29 @@ async function main() {
       console.log("⏭️  Skipping fargolibrary.org\n")
     }
 
+    // Fetch westfargolibrary.org
+    if (selectedSources.has("westfargolibrary.org")) {
+      console.log("📥 Fetching westfargolibrary.org...")
+      try {
+        const westFargoLibraryFetcher = new WestFargoLibraryFetcher()
+        const westFargoLibraryEvents =
+          await westFargoLibraryFetcher.fetchEvents()
+        db.deleteEventsBySource("westfargolibrary.org")
+        for (const event of westFargoLibraryEvents) {
+          db.insertEvent(westFargoLibraryFetcher.transformToStoredEvent(event))
+        }
+        db.setSourceLastUpdatedDate("westfargolibrary.org", today)
+        console.log(`✓ Stored ${westFargoLibraryEvents.length} events\n`)
+      } catch (error) {
+        logError("❌ westfargolibrary.org refetch failed:", error)
+        console.log(
+          "⚠️  Keeping existing westfargolibrary.org events (no delete performed).\n",
+        )
+      }
+    } else {
+      console.log("⏭️  Skipping westfargolibrary.org\n")
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -236,22 +264,28 @@ async function main() {
     const downtownStored = db.getEventsBySource("downtownfargo.com")
     const westFargoStored = db.getEventsBySource("westfargoevents.com")
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
+    const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
       ...findMatches(fargoStored, downtownStored, 0.65),
       ...findMatches(fargoStored, westFargoStored, 0.65),
       ...findMatches(fargoStored, fargoLibraryStored, 0.65),
+      ...findMatches(fargoStored, westFargoLibraryStored, 0.65),
       ...findMatches(downtownStored, undergroundStored, 0.65),
       ...findMatches(downtownStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, westFargoStored, 0.65),
       ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
+      ...findMatches(undergroundStored, westFargoLibraryStored, 0.65),
       ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
+      ...findMatches(westFargoStored, westFargoLibraryStored, 0.65),
+      ...findMatches(fargoLibraryStored, westFargoLibraryStored, 0.65),
       ...findSelfMatches(fargoStored),
       ...findSelfMatches(undergroundStored),
       ...findSelfMatches(downtownStored),
       ...findSelfMatches(westFargoStored),
       ...findSelfMatches(fargoLibraryStored),
+      ...findSelfMatches(westFargoLibraryStored),
     ]
 
     db.clearMatches()
