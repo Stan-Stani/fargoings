@@ -5,6 +5,7 @@ import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
 import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
+import { DrekkerBrewingFetcher } from "./fetchers/drekkerbrewing-com"
 import { MoorheadLibraryFetcher } from "./fetchers/moorheadlibrary-org"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
@@ -18,6 +19,7 @@ type SourceId =
   | "fargolibrary.org"
   | "westfargolibrary.org"
   | "larl.org"
+  | "drekkerbrewing.com"
 
 const ALL_SOURCES: SourceId[] = [
   "fargomoorhead.org",
@@ -27,6 +29,7 @@ const ALL_SOURCES: SourceId[] = [
   "fargolibrary.org",
   "westfargolibrary.org",
   "larl.org",
+  "drekkerbrewing.com",
 ]
 
 const SOURCE_ALIASES: Record<string, SourceId> = {
@@ -44,6 +47,8 @@ const SOURCE_ALIASES: Record<string, SourceId> = {
   moorheadlibrary: "larl.org",
   mph: "larl.org",
   larl: "larl.org",
+  drekker: "drekkerbrewing.com",
+  drekkerbrewing: "drekkerbrewing.com",
 }
 
 function parseSelectedSources(argv: string[]): Set<SourceId> {
@@ -280,6 +285,28 @@ async function main() {
       console.log("⏭️  Skipping larl.org\n")
     }
 
+    // Fetch drekkerbrewing.com
+    if (selectedSources.has("drekkerbrewing.com")) {
+      console.log("📥 Fetching drekkerbrewing.com...")
+      try {
+        const drekkerFetcher = new DrekkerBrewingFetcher()
+        const drekkerEvents = await drekkerFetcher.fetchEvents()
+        db.deleteEventsBySource("drekkerbrewing.com")
+        for (const event of drekkerEvents) {
+          db.insertEvent(drekkerFetcher.transformToStoredEvent(event))
+        }
+        db.setSourceLastUpdatedDate("drekkerbrewing.com", today)
+        console.log(`✓ Stored ${drekkerEvents.length} events\n`)
+      } catch (error) {
+        logError("❌ drekkerbrewing.com refetch failed:", error)
+        console.log(
+          "⚠️  Keeping existing drekkerbrewing.com events (no delete performed).\n",
+        )
+      }
+    } else {
+      console.log("⏭️  Skipping drekkerbrewing.com\n")
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -297,6 +324,7 @@ async function main() {
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
     const moorheadLibraryStored = db.getEventsBySource("larl.org")
+    const drekkerStored = db.getEventsBySource("drekkerbrewing.com")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
@@ -317,6 +345,10 @@ async function main() {
       ...findMatches(westFargoStored, moorheadLibraryStored, 0.65),
       ...findMatches(fargoLibraryStored, moorheadLibraryStored, 0.65),
       ...findMatches(westFargoLibraryStored, moorheadLibraryStored, 0.65),
+      ...findMatches(fargoStored, drekkerStored, 0.65),
+      ...findMatches(undergroundStored, drekkerStored, 0.65),
+      ...findMatches(downtownStored, drekkerStored, 0.65),
+      ...findMatches(westFargoStored, drekkerStored, 0.65),
       ...findSelfMatches(fargoStored),
       ...findSelfMatches(undergroundStored),
       ...findSelfMatches(downtownStored),
@@ -324,6 +356,7 @@ async function main() {
       ...findSelfMatches(fargoLibraryStored),
       ...findSelfMatches(westFargoLibraryStored),
       ...findSelfMatches(moorheadLibraryStored),
+      ...findSelfMatches(drekkerStored),
     ]
 
     db.clearMatches()

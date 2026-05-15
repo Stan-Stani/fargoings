@@ -7,6 +7,7 @@ import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
+import { DrekkerBrewingFetcher } from "./fetchers/drekkerbrewing-com"
 import { MoorheadLibraryFetcher } from "./fetchers/moorheadlibrary-org"
 import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
 import { logError } from "./log"
@@ -29,6 +30,7 @@ async function main() {
   const fargoLibraryFetcher = new FargoLibraryFetcher()
   const westFargoLibraryFetcher = new WestFargoLibraryFetcher()
   const moorheadLibraryFetcher = new MoorheadLibraryFetcher()
+  const drekkerFetcher = new DrekkerBrewingFetcher()
 
   try {
     const today = getLocalDateString(new Date())
@@ -48,6 +50,7 @@ async function main() {
     const moorheadLibraryLastUpdated = db.getSourceLastUpdatedDate(
       "larl.org",
     )
+    const drekkerLastUpdated = db.getSourceLastUpdatedDate("drekkerbrewing.com")
     const freshCount = [
       fargoLastUpdated,
       undergroundLastUpdated,
@@ -56,8 +59,9 @@ async function main() {
       fargoLibraryLastUpdated,
       westFargoLibraryLastUpdated,
       moorheadLibraryLastUpdated,
+      drekkerLastUpdated,
     ].filter((date) => date === today).length
-    const staleCount = 7 - freshCount
+    const staleCount = 8 - freshCount
     console.log(`🧊 Cache status: ${freshCount} fresh, ${staleCount} stale`)
 
     // Fetch from fargomoorhead.org
@@ -289,6 +293,36 @@ async function main() {
       }
     }
 
+    // Fetch from drekkerbrewing.com
+    console.log(
+      `   drekkerbrewing.com cache date: ${drekkerLastUpdated || "never"} (today: ${today})`,
+    )
+    if (drekkerLastUpdated === today) {
+      console.log("⏭️  Using cached drekkerbrewing.com events (fresh today).\n")
+    } else {
+      try {
+        console.log(
+          "📥 Fetching events from drekkerbrewing.com (next 2 weeks)...",
+        )
+        const drekkerEvents = await drekkerFetcher.fetchEvents()
+        console.log(`✓ Fetched ${drekkerEvents.length} events\n`)
+
+        console.log("💾 Storing drekkerbrewing.com events...")
+        let drekkerInserted = 0
+        for (const event of drekkerEvents) {
+          db.insertEvent(drekkerFetcher.transformToStoredEvent(event))
+          drekkerInserted++
+        }
+        db.setSourceLastUpdatedDate("drekkerbrewing.com", today)
+        console.log(`✓ Processed ${drekkerInserted} events\n`)
+      } catch (error) {
+        logError("❌ drekkerbrewing.com fetch failed:", error)
+        console.log(
+          "⚠️  Skipping drekkerbrewing.com refresh; keeping existing cached events.\n",
+        )
+      }
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -307,6 +341,7 @@ async function main() {
     const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
     const moorheadLibraryStored = db.getEventsBySource("larl.org")
+    const drekkerStored = db.getEventsBySource("drekkerbrewing.com")
 
     // Find matches between all source pairs, plus within each source
     // (catches re-posts after a delete, recurring-event ID churn, etc.)
@@ -329,6 +364,10 @@ async function main() {
       ...findMatches(westFargoStored, moorheadLibraryStored, 0.65),
       ...findMatches(fargoLibraryStored, moorheadLibraryStored, 0.65),
       ...findMatches(westFargoLibraryStored, moorheadLibraryStored, 0.65),
+      ...findMatches(fargoStored, drekkerStored, 0.65),
+      ...findMatches(undergroundStored, drekkerStored, 0.65),
+      ...findMatches(downtownStored, drekkerStored, 0.65),
+      ...findMatches(westFargoStored, drekkerStored, 0.65),
       ...findSelfMatches(fargoStored),
       ...findSelfMatches(undergroundStored),
       ...findSelfMatches(downtownStored),
@@ -336,6 +375,7 @@ async function main() {
       ...findSelfMatches(fargoLibraryStored),
       ...findSelfMatches(westFargoLibraryStored),
       ...findSelfMatches(moorheadLibraryStored),
+      ...findSelfMatches(drekkerStored),
     ]
 
     db.clearMatches()
