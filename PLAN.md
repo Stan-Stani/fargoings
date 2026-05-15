@@ -98,14 +98,16 @@ blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
 - ✅ **Drekker Brewing** — SHIPPED 2026-05-15 (`drekkerbrewing-com.ts`,
   Tribe REST via `fetchTribeEvents`). 0 events in-window at ship; auto-
   populates. Code on `main`; rides next VPS deploy.
-- **NEXT — NDSU + MSUM athletics (Sidearm Sports RSS)**, confirmed
-  2026-05-15: `gobison.com/calendar.ashx/calendar.rss` (85 items) and
-  `msumdragons.com/calendar.ashx/calendar.rss` (61). One fetcher
-  parameterized by base URL (like `fetchTribeEvents`) → two high-draw
-  schedules (NDSU FB/BB are major regional events). Notes: `<ev:startdate>`
-  is sometimes date-only (TBD) vs full UTC ISO → convert to America/Chicago;
-  title encodes `[L]`home/`[A]`away/`[N]`neutral + opponent; `<link>` is
-  `admin.gobison.com/...` (rewrite to `www.`). Concordia (`cobbers.com`) is
+- ✅ **NDSU + MSUM athletics — SHIPPED 2026-05-15.**
+  `src/fetchers/sidearm-sports.ts` (`SidearmSportsFetcher`, RSS at
+  `<base>/calendar.ashx/calendar.rss`), configured for `gobison.com` (NDSU,
+  85) + `msumdragons.com` (MSUM, 61). Every event tagged a `Sports`
+  category; `SPORTS_SOURCES` in `database.ts` is excluded from
+  `queryDisplayEvents` by default. `?sports=show` (API) ↔ persisted
+  "Show sports" checkbox (web, localStorage) opts in. UTC→Central handled;
+  `[L|A|N]` marker optional in titles (away games omit it). Self-match only.
+  **Known minor:** same-day doubleheaders can self-dedupe (distinct
+  game_ids but near-identical title/time). Concordia (`cobbers.com`) is
   NOT Sidearm (404) — separate scope.
 - **FargoDome** + **Fargo Force** — Ticketmaster-backed. Ticketmaster
   Discovery API (free key, by venue id) → "enable an API key?" decision,
