@@ -44,9 +44,12 @@ _Last refreshed: 2026-05-14. Current version: v1.1.9._
 - `src/fetchers/westfargolibrary-org.ts` — minimal RFC 5545 parser (line unfolding, VEVENT field extraction). Source id `westfargolibrary.org`, ID prefix `wfpl_${uid}_${date}` (recurring entries reuse one UID across dates, so the date is part of the key or the upsert collapses every occurrence). Local wall-clock times kept as-is (no VPS-tz shift). Closure notices (`LIBRARY CLOSED/CLOSING/OPEN …`) dropped. Wired into `index.ts` + `refetch.ts` (alias `westfargolibrary`/`wfpl`) with dedup pairs + self-match.
 - **Prod deployment + the IP-block (resolved 2026-05-15):** West Fargo's server (`207.38.72.44`, shared with westfargond.gov) silently firewalls the VPS's DigitalOcean IP — TCP gets no SYN-ACK; `civicplus.com` itself works from the VPS, so it's West Fargo's own edge ACL, not a CivicPlus datacenter block. Not publicly documented. Cloudflare egress is **not** blocked (verified with a throwaway Worker probe: `{reachable:true,vevents:180}`). Fix shipped: a Cloudflare Worker relay (`infra/wfpl-feed-worker/`, deployed at `wfpl-feed.islaus.workers.dev`, secret-gated) + a `WFPL_ICS_URL` fetcher override (also `WFPL_ICS_FILE` for a local-file fallback). The VPS `/root/fargoings/.env` (gitignored, `chmod 600`) sets `WFPL_ICS_URL=…?key=…`; `index.ts`/`refetch.ts` load dotenv so the weekly `0 5 * * 4 npm start` cron pulls via the relay unattended. Verified live: fargoings.com serves the 10 in-window WFPL events end to end. Durable alternative: have West Fargo IT allowlist `159.203.249.74`, then unset `WFPL_ICS_URL` and delete the Worker.
 
-**Moorhead Public Library — still open:**
-- Part of Lake Agassiz Regional Library (LARL). `larl.org/events/` embeds the **LibNet/Communico** calendar at `larl.libnet.info`. A naive `eeventcaldata` probe returned `[]` — needs reverse-engineering of LibNet's actual JSON endpoint/params and a way to filter to the Moorhead branch (LARL is multi-branch). This is the research-heavy remainder.
-- Build `src/fetchers/moorheadlibrary-org.ts`, ID prefix `mph_`. Per `AGENTS.md`: update both `src/index.ts` _and_ `src/refetch.ts`; add dedup pairs.
+**Moorhead Public Library — SHIPPED 2026-05-15:**
+- Part of Lake Agassiz Regional Library (LARL), Communico/LibNet at `larl.libnet.info`. Reverse-engineered via browser network capture: the SPA calls `eeventcaldata?event_type=0&req=<URL-encoded JSON>` where `req={"private":false,"date":"YYYY-MM-DD","days":N,"locations":[ids],"ages":[],"types":[]}` (the earlier `[]` was from passing `req` as a datetime string). Branch ids come from `api.communico.co/v1/larl/locations`; **Moorhead = `3119`**, so `locations:["3119"]` filters server-side to that one branch. Branch coords (46.873097, -96.771756) set on every event for the map.
+- `src/fetchers/moorheadlibrary-org.ts` — source id `moorheadlibrary.org`, ID prefix `mph_${id}` (each recurring occurrence has a unique `id`). Local wall-clock times kept verbatim. Skips `private_event`. Wired into `index.ts` + `refetch.ts` (aliases `moorhead`/`moorheadlibrary`/`mph`) with dedup pairs + self-match.
+- **WAF/IP block:** `larl.libnet.info`'s AWS WAF/ALB (`server: awselb/2.0`) 403s the VPS's DigitalOcean IP on the API endpoint (the `/events` HTML page is reachable; residential IPs get 200 — IP-class block). Fixed with a second Cloudflare Worker relay `infra/larl-feed-worker/` (deployed `larl-feed.islaus.workers.dev`, secret-gated, forwards the querystring since `req` is dynamic) + `MPH_EVENTS_URL` fetcher override in the VPS `.env`. Verified live: fargoings.com serves the 18 in-window Moorhead events end to end via the relay; weekly `npm start` cron uses it unattended.
+
+**PLAN item C is now fully complete** (Fargo + West Fargo + Moorhead public libraries all shipped).
 
 ### D. Google Reviews on venue links (decision needed)
 
@@ -89,5 +92,5 @@ Client-side grouping in `renderRows()` keyed on `(date, location)`. When ≥3 ev
 3. ~~**F — collapse same-venue rows**~~ — shipped 2026-05-14.
 4. **A — map loads all events** (small, high-impact; map view currently shows only the loaded page)
 5. **B — marker clustering** (small, naturally follows A)
-6. ~~**C — West Fargo Public Library**~~ — shipped 2026-05-15. **Moorhead PL** still open (LibNet API reverse-engineering + branch filter).
+6. ~~**C — Moorhead + West Fargo libraries**~~ — fully shipped 2026-05-15 (both via Cloudflare Worker relays for datacenter-IP/WAF blocks).
 7. **D — Google Reviews decision** (one conversation, not coding work)
