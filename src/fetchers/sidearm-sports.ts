@@ -80,9 +80,11 @@ export class SidearmSportsFetcher {
     // Strip the leading "M/D [h:mm AM/PM] [L|A|N] " bookkeeping prefix; the
     // remainder ("North Dakota State University Softball vs St. Thomas") is
     // the human title. Capture the home/away marker for the location line.
+    // "M/D [h:mm AM/PM] [L|A|N] <title>" — both the time and the [L|A|N]
+    // marker are optional (away games often omit the bracket).
     const raw = decodeHtmlEntities(event.title).trim()
     const m = raw.match(
-      /^\d{1,2}\/\d{1,2}(?:\s+\d{1,2}:\d{2}\s*[AP]M)?\s*\[([LAN])\]\s*(.+)$/i,
+      /^\d{1,2}\/\d{1,2}(?:\s+\d{1,2}:\d{2}\s*[AP]M)?\s*(?:\[([LAN])\]\s*)?(.+)$/i,
     )
     const venueType = m?.[1]?.toUpperCase()
     const title = (m?.[2] ?? raw).replace(/\s{2,}/g, " ").trim()
