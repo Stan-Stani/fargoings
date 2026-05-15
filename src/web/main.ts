@@ -40,6 +40,8 @@ let totalPages = 1
 let hasMore = false
 let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
+const showSportsStorageKey = "showSports"
+let showSports = localStorage.getItem(showSportsStorageKey) === "1"
 let currentItems: EventItem[] = []
 let isLoading = false
 let viewMode: ViewMode = "list"
@@ -103,6 +105,9 @@ const mapContainerEl = document.getElementById("mapContainer") as HTMLDivElement
 const categoryFilterEl = document.getElementById(
   "categoryFilter",
 ) as HTMLSelectElement
+const showSportsToggleEl = document.getElementById(
+  "showSportsToggle",
+) as HTMLInputElement
 const themeToggleBtn = document.getElementById(
   "themeToggle",
 ) as HTMLButtonElement
@@ -946,6 +951,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   if (query) params.set("q", query)
   if (categoryFilter) params.set("category", categoryFilter)
   if (datePreset && datePreset !== "all") params.set("preset", datePreset)
+  if (showSports) params.set("sports", "show")
 
   try {
     const response = await fetch(apiPath + "?" + params.toString())
@@ -1098,6 +1104,14 @@ presetBtns.forEach((btn) => {
 categoryFilterEl.addEventListener("change", () => {
   categoryFilter = categoryFilterEl.value
   syncFiltersToggleButtonState()
+  page = 1
+  load("replace")
+})
+
+showSportsToggleEl.checked = showSports
+showSportsToggleEl.addEventListener("change", () => {
+  showSports = showSportsToggleEl.checked
+  localStorage.setItem(showSportsStorageKey, showSports ? "1" : "0")
   page = 1
   load("replace")
 })

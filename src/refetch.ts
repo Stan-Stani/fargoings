@@ -6,6 +6,7 @@ import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
 import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { DrekkerBrewingFetcher } from "./fetchers/drekkerbrewing-com"
+import { SidearmSportsFetcher } from "./fetchers/sidearm-sports"
 import { MoorheadLibraryFetcher } from "./fetchers/moorheadlibrary-org"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
@@ -20,6 +21,8 @@ type SourceId =
   | "westfargolibrary.org"
   | "larl.org"
   | "drekkerbrewing.com"
+  | "gobison.com"
+  | "msumdragons.com"
 
 const ALL_SOURCES: SourceId[] = [
   "fargomoorhead.org",
@@ -30,6 +33,8 @@ const ALL_SOURCES: SourceId[] = [
   "westfargolibrary.org",
   "larl.org",
   "drekkerbrewing.com",
+  "gobison.com",
+  "msumdragons.com",
 ]
 
 const SOURCE_ALIASES: Record<string, SourceId> = {
@@ -49,6 +54,12 @@ const SOURCE_ALIASES: Record<string, SourceId> = {
   larl: "larl.org",
   drekker: "drekkerbrewing.com",
   drekkerbrewing: "drekkerbrewing.com",
+  ndsu: "gobison.com",
+  bison: "gobison.com",
+  gobison: "gobison.com",
+  msum: "msumdragons.com",
+  dragons: "msumdragons.com",
+  msumdragons: "msumdragons.com",
 }
 
 function parseSelectedSources(argv: string[]): Set<SourceId> {
@@ -307,6 +318,53 @@ async function main() {
       console.log("⏭️  Skipping drekkerbrewing.com\n")
     }
 
+    // Fetch college athletics (Sidearm) — gobison.com, msumdragons.com
+    const sportsConfigs: {
+      source: SourceId
+      cfg: ConstructorParameters<typeof SidearmSportsFetcher>[0]
+    }[] = [
+      {
+        source: "gobison.com",
+        cfg: {
+          baseUrl: "https://gobison.com",
+          schoolName: "NDSU Athletics",
+          sourceId: "gobison.com",
+          city: "Fargo",
+        },
+      },
+      {
+        source: "msumdragons.com",
+        cfg: {
+          baseUrl: "https://www.msumdragons.com",
+          schoolName: "MSUM Athletics",
+          sourceId: "msumdragons.com",
+          city: "Moorhead",
+        },
+      },
+    ]
+    for (const { source, cfg } of sportsConfigs) {
+      if (!selectedSources.has(source)) {
+        console.log(`⏭️  Skipping ${source}\n`)
+        continue
+      }
+      console.log(`📥 Fetching ${source}...`)
+      try {
+        const fetcher = new SidearmSportsFetcher(cfg)
+        const events = await fetcher.fetchEvents()
+        db.deleteEventsBySource(source)
+        for (const event of events) {
+          db.insertEvent(fetcher.transformToStoredEvent(event))
+        }
+        db.setSourceLastUpdatedDate(source, today)
+        console.log(`✓ Stored ${events.length} events\n`)
+      } catch (error) {
+        logError(`❌ ${source} refetch failed:`, error)
+        console.log(
+          `⚠️  Keeping existing ${source} events (no delete performed).\n`,
+        )
+      }
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -325,6 +383,8 @@ async function main() {
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
     const moorheadLibraryStored = db.getEventsBySource("larl.org")
     const drekkerStored = db.getEventsBySource("drekkerbrewing.com")
+    const ndsuSportsStored = db.getEventsBySource("gobison.com")
+    const msumSportsStored = db.getEventsBySource("msumdragons.com")
 
     const allMatches = [
       ...findMatches(fargoStored, undergroundStored, 0.65),
@@ -357,6 +417,8 @@ async function main() {
       ...findSelfMatches(westFargoLibraryStored),
       ...findSelfMatches(moorheadLibraryStored),
       ...findSelfMatches(drekkerStored),
+      ...findSelfMatches(ndsuSportsStored),
+      ...findSelfMatches(msumSportsStored),
     ]
 
     db.clearMatches()

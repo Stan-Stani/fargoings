@@ -2,6 +2,13 @@ import Database from "better-sqlite3"
 import { StoredEvent } from "../types/event"
 import { VENUE_RULES } from "../enrichment/venues"
 
+/**
+ * Sources whose events are sports schedules — hidden from the main feed by
+ * default (high volume), revealed via the "Show sports" toggle. Keep in sync
+ * with any new athletics fetchers.
+ */
+export const SPORTS_SOURCES = ["gobison.com", "msumdragons.com"]
+
 export interface EventMatch {
   id: number
   eventId1: string
@@ -566,6 +573,7 @@ export class EventDatabase {
     category: string = "",
     dateFrom: string = "",
     dateTo: string = "",
+    includeSports: boolean = false,
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
     const normalizedCategory = category.trim().toLowerCase()
@@ -599,6 +607,16 @@ export class EventDatabase {
     if (normalizedCategory) {
       conditions.push("lower(coalesce(categories, '')) LIKE ?")
       params.push(`%${normalizedCategory}%`)
+    }
+
+    // Sports schedules (college athletics, etc.) are high-volume and would
+    // bury the rest of the feed, so they're hidden unless explicitly asked
+    // for (the "Show sports" toggle).
+    if (!includeSports && SPORTS_SOURCES.length > 0) {
+      conditions.push(
+        `source NOT IN (${SPORTS_SOURCES.map(() => "?").join(", ")})`,
+      )
+      params.push(...SPORTS_SOURCES)
     }
 
     const whereClause = `WHERE ${conditions.join(" AND ")}`

@@ -153,6 +153,8 @@ async function main() {
       const rawFrom = requestUrl.searchParams.get("dateFrom") || ""
       const rawTo = requestUrl.searchParams.get("dateTo") || ""
       const { dateFrom, dateTo } = resolveDateRange(preset, rawFrom, rawTo)
+      const includeSports =
+        requestUrl.searchParams.get("sports") === "show"
 
       const result = db.queryDisplayEvents(
         query,
@@ -162,6 +164,7 @@ async function main() {
         category,
         dateFrom,
         dateTo,
+        includeSports,
       )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 

@@ -8,6 +8,7 @@ import { FargoFetcher } from "./fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
 import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
 import { DrekkerBrewingFetcher } from "./fetchers/drekkerbrewing-com"
+import { SidearmSportsFetcher } from "./fetchers/sidearm-sports"
 import { MoorheadLibraryFetcher } from "./fetchers/moorheadlibrary-org"
 import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
 import { logError } from "./log"
@@ -31,6 +32,18 @@ async function main() {
   const westFargoLibraryFetcher = new WestFargoLibraryFetcher()
   const moorheadLibraryFetcher = new MoorheadLibraryFetcher()
   const drekkerFetcher = new DrekkerBrewingFetcher()
+  const ndsuSportsFetcher = new SidearmSportsFetcher({
+    baseUrl: "https://gobison.com",
+    schoolName: "NDSU Athletics",
+    sourceId: "gobison.com",
+    city: "Fargo",
+  })
+  const msumSportsFetcher = new SidearmSportsFetcher({
+    baseUrl: "https://www.msumdragons.com",
+    schoolName: "MSUM Athletics",
+    sourceId: "msumdragons.com",
+    city: "Moorhead",
+  })
 
   try {
     const today = getLocalDateString(new Date())
@@ -51,6 +64,9 @@ async function main() {
       "larl.org",
     )
     const drekkerLastUpdated = db.getSourceLastUpdatedDate("drekkerbrewing.com")
+    const ndsuSportsLastUpdated = db.getSourceLastUpdatedDate("gobison.com")
+    const msumSportsLastUpdated =
+      db.getSourceLastUpdatedDate("msumdragons.com")
     const freshCount = [
       fargoLastUpdated,
       undergroundLastUpdated,
@@ -60,8 +76,10 @@ async function main() {
       westFargoLibraryLastUpdated,
       moorheadLibraryLastUpdated,
       drekkerLastUpdated,
+      ndsuSportsLastUpdated,
+      msumSportsLastUpdated,
     ].filter((date) => date === today).length
-    const staleCount = 8 - freshCount
+    const staleCount = 10 - freshCount
     console.log(`🧊 Cache status: ${freshCount} fresh, ${staleCount} stale`)
 
     // Fetch from fargomoorhead.org
@@ -323,6 +341,51 @@ async function main() {
       }
     }
 
+    // Fetch college athletics (Sidearm). Hidden from the main feed by
+    // default (see SPORTS_SOURCES) — they're high-volume schedules.
+    const sportsSources: {
+      fetcher: SidearmSportsFetcher
+      source: string
+      lastUpdated: string | undefined
+    }[] = [
+      {
+        fetcher: ndsuSportsFetcher,
+        source: "gobison.com",
+        lastUpdated: ndsuSportsLastUpdated,
+      },
+      {
+        fetcher: msumSportsFetcher,
+        source: "msumdragons.com",
+        lastUpdated: msumSportsLastUpdated,
+      },
+    ]
+    for (const s of sportsSources) {
+      console.log(
+        `   ${s.source} cache date: ${s.lastUpdated || "never"} (today: ${today})`,
+      )
+      if (s.lastUpdated === today) {
+        console.log(`⏭️  Using cached ${s.source} events (fresh today).\n`)
+        continue
+      }
+      try {
+        console.log(`📥 Fetching events from ${s.source}...`)
+        const sportsEvents = await s.fetcher.fetchEvents()
+        console.log(`✓ Fetched ${sportsEvents.length} events\n`)
+        let inserted = 0
+        for (const event of sportsEvents) {
+          db.insertEvent(s.fetcher.transformToStoredEvent(event))
+          inserted++
+        }
+        db.setSourceLastUpdatedDate(s.source, today)
+        console.log(`✓ Processed ${inserted} events\n`)
+      } catch (error) {
+        logError(`❌ ${s.source} fetch failed:`, error)
+        console.log(
+          `⚠️  Skipping ${s.source} refresh; keeping existing cached events.\n`,
+        )
+      }
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
@@ -342,6 +405,8 @@ async function main() {
     const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
     const moorheadLibraryStored = db.getEventsBySource("larl.org")
     const drekkerStored = db.getEventsBySource("drekkerbrewing.com")
+    const ndsuSportsStored = db.getEventsBySource("gobison.com")
+    const msumSportsStored = db.getEventsBySource("msumdragons.com")
 
     // Find matches between all source pairs, plus within each source
     // (catches re-posts after a delete, recurring-event ID churn, etc.)
@@ -376,6 +441,10 @@ async function main() {
       ...findSelfMatches(westFargoLibraryStored),
       ...findSelfMatches(moorheadLibraryStored),
       ...findSelfMatches(drekkerStored),
+      // Sports schedules don't legitimately cross-list into the general
+      // feeds, so only self-match (catches Sidearm re-list churn).
+      ...findSelfMatches(ndsuSportsStored),
+      ...findSelfMatches(msumSportsStored),
     ]
 
     db.clearMatches()
