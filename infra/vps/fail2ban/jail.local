@@ -1,0 +1,22 @@
+# fail2ban jails for the seldon VPS.
+# Repo copy: fargoings/infra/vps/fail2ban/jail.local → /etc/fail2ban/jail.local
+#
+# apache-scanner: bans vulnerability scanners across ALL vhost access logs
+# (fargoings, soogoings, seldoncortex, wolcen) via the apache_access_log glob.
+# 2 probes within an hour → banned for a week. ignoreip covers the VPS itself
+# so deploy-time curl checks can never self-ban.
+
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 159.203.249.74
+
+[sshd]
+enabled = true
+
+[apache-scanner]
+enabled = true
+port = http,https
+filter = apache-scanner
+logpath = %(apache_access_log)s
+maxretry = 2
+findtime = 1h
+bantime = 1w

@@ -1,0 +1,132 @@
+#!/bin/bash
+# Daily traffic summary email for fargoings + soogoings.
+#
+# Classifies every access-log line as human / crawler / scanner / bot instead
+# of trusting raw counts — on 2026-06-09 the "226 unique visitors" goaccess
+# reported were ~97% vulnerability scanners and crawlers; only 5 browser IPs
+# actually fetched events from the API.
+#
+# "Real person" = browser-UA IP that hit /api/events (only the frontend JS
+# calls it; scanners don't execute JS). Verified crawlers that do execute JS
+# (Googlebot etc.) are bucketed separately by UA before the human check.
+#
+# Deployed at /usr/local/bin/fargoings-daily-summary, cron 0 2 * * * (root).
+# Repo copy: infra/vps/fargoings-daily-summary
+# Usage: fargoings-daily-summary [--dry-run]   # --dry-run prints, no email
+
+RECIPIENT="islaus@gmail.com"
+DATE=$(date -d yesterday +%Y-%m-%d)
+HR="────────────────────────────────────────"
+
+# Emit one TSV line per log line: class, ip, path, status, bytes, agent.
+# agent = the matched crawler keyword for crawlers, else the full UA.
+classify() {
+    awk -F'"' '
+    {
+        split($1, pre, " "); ip = pre[1]
+        n = split($2, req, " "); path = (n >= 2) ? req[2] : "-"
+        split($3, post, " "); status = post[1] + 0; bytes = post[2]
+        ua = ($6 == "") ? "-" : $6
+        lua = tolower(ua); lpath = tolower(path)
+
+        cls = "human"; agent = ua
+        if (lpath ~ /\.(env|git|aws|ssh|sql|bak|old|php[0-9]?|asp|aspx|jsp|cgi)([?\/]|$)/ ||
+            lpath ~ /wp-admin|wp-login|wp-config|wp-includes|wp-content|wordpress|xmlrpc|phpmyadmin|phpunit|\/vendor\/|\/actuator|\/solr\/|\/owa\/|\/autodiscover|\/cgi-bin\/|hnap1|boaform|gponform|geoserver|\/etc\/passwd/ ||
+            (lpath ~ /\/\./ && lpath !~ /\.well-known/)) {
+            cls = "scanner"
+        } else {
+            ncr = split("googlebot bingbot duckduckbot applebot yandex baiduspider gptbot oai-searchbot claudebot perplexity amazonbot petalbot ahrefsbot semrushbot mj12bot dotbot meta-externalagent facebookexternalhit bytespider linkedinbot twitterbot telegrambot whatsapp slackbot discordbot", CR, " ")
+            for (i = 1; i <= ncr; i++)
+                if (index(lua, CR[i]) > 0) { cls = "crawler"; agent = CR[i]; break }
+            if (cls == "human" &&
+                (ua == "-" ||
+                 lua ~ /bot|crawl|spider|slurp|zgrab|l9explore|go-http|python|curl|wget|libwww|httpclient|okhttp|scrapy|masscan|nuclei|censys|infrawatch|expanse|odin|scanner|probe|headless|internetmeasure|researchscan|xmco|netsystems|paloalto|nmap|aiohttp|httpx\/|java\//))
+                cls = "bot"
+        }
+        printf "%s\t%s\t%s\t%s\t%s\t%s\n", cls, ip, path, status, bytes, agent
+    }' "$1"
+}
+
+site_report() {
+    local name="$1" logfile="$2"
+    echo "$name"
+    echo "$HR"
+    if [ ! -s "$logfile" ]; then
+        echo "  (no log data at $logfile)"
+        echo
+        return
+    fi
+    local tmp; tmp=$(mktemp /tmp/traffic-XXXXXX.tsv)
+    classify "$logfile" > "$tmp"
+
+    local nvis loads lurk
+    nvis=$(awk -F'\t' '$1 == "human" && $3 ~ /^\/api\/events/ { print $2 }' "$tmp" | sort -u | wc -l)
+    loads=$(awk -F'\t' '$1 == "human" && $3 ~ /^\/api\/events/' "$tmp" | wc -l)
+    lurk=$(awk -F'\t' '$1 == "human" { hits[$2]++; if ($3 ~ /^\/api\/events/) app[$2] = 1 }
+                       END { n = 0; for (i in hits) if (!(i in app)) n++; print n }' "$tmp")
+
+    echo "REAL PEOPLE"
+    printf '  Visitors:       %d   (browser IPs that fetched events from the API)\n' "$nvis"
+    printf '  Event fetches:  %d\n' "$loads"
+    awk -F'\t' '$1 == "human" { hits[$2]++; if ($3 ~ /^\/api\/events/) app[$2] = 1 }
+                END { for (i in app) printf "%d\t%s\n", hits[i], i }' "$tmp" \
+        | sort -rn | awk -F'\t' '{ printf "  %6d hits  %s\n", $1, $2 }'
+    printf '  Browser-looking IPs that never used the app: %d (likely disguised bots)\n' "$lurk"
+    echo
+
+    echo "SEARCH & AI CRAWLERS — $(grep -c $'^crawler\t' "$tmp") requests"
+    awk -F'\t' '$1 == "crawler" { print $6 }' "$tmp" | sort | uniq -c | sort -rn | head -8 \
+        | awk '{ printf "  %6d  %s\n", $1, $2 }'
+    echo
+
+    local nscan nbot nips
+    nscan=$(grep -c $'^scanner\t' "$tmp")
+    nbot=$(grep -c $'^bot\t' "$tmp")
+    nips=$(awk -F'\t' '$1 == "scanner" || $1 == "bot" { print $2 }' "$tmp" | sort -u | wc -l)
+    echo "SCANNERS & BOTS — $((nscan + nbot)) requests from $nips IPs"
+    echo "  Top probed paths:"
+    awk -F'\t' '$1 == "scanner" { print $3 }' "$tmp" | sort | uniq -c | sort -rn | head -8 \
+        | awk '{ printf "  %6d  %s\n", $1, $2 }'
+    echo "  Top bot agents:"
+    awk -F'\t' '$1 == "bot" { print $6 }' "$tmp" | sort | uniq -c | sort -rn | head -5 \
+        | awk '{ c = $1; $1 = ""; printf "  %6d %s\n", c, $0 }'
+    echo
+
+    awk -F'\t' '{ total++; if ($4 + 0 >= 400) failed++; if ($5 != "-") bw += $5 }
+                END { printf "RAW: %d requests, %d failed, %.1f MB\n", total, failed + 0, bw / 1048576 }' "$tmp"
+    echo
+    rm -f "$tmp"
+}
+
+build_summary() {
+    echo "DAILY TRAFFIC — $DATE"
+    echo
+    site_report "FARGOINGS (www.fargoings.com)" /var/log/apache2/fargoings_access.log.1
+    site_report "SOOGOINGS (soo.fargoings.com)" /var/log/apache2/soogoings_access.log.1
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        local banned
+        banned=$(fail2ban-client status apache-scanner 2>/dev/null \
+            | sed -n 's/.*Currently banned:[[:space:]]*//p')
+        local total
+        total=$(fail2ban-client status apache-scanner 2>/dev/null \
+            | sed -n 's/.*Total banned:[[:space:]]*//p')
+        echo "fail2ban apache-scanner: ${banned:-0} IPs banned right now (${total:-0} since last restart)"
+    fi
+    echo "Live dashboard: https://www.seldoncortex.com/stats/fargoings/"
+}
+
+SUMMARY=$(build_summary)
+
+if [ "$1" = "--dry-run" ]; then
+    echo "$SUMMARY"
+    exit 0
+fi
+
+{
+    echo "To: $RECIPIENT"
+    echo "From: islaus@gmail.com"
+    echo "Subject: Fargoings Stats - $DATE"
+    echo "Content-Type: text/plain; charset=utf-8"
+    echo
+    echo "$SUMMARY"
+} | msmtp -t
