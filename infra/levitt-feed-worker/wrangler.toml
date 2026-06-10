@@ -6,4 +6,4 @@ account_id = "feff467962742b91f79858ee6480118b"
 
 # Secret (NOT stored here): LEVITT_KEY — set with
 # `npx wrangler secret put LEVITT_KEY`. Must equal the ?key= value in the
-# SooGoings deployment's .env LEVITT_EVENTS_URL.
+# SuFuGoings deployment's .env LEVITT_EVENTS_URL.

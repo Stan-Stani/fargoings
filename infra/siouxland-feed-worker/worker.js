@@ -1,5 +1,5 @@
 // siouxland-feed — Cloudflare Worker relay for the Siouxland Libraries
-// (Communico) events API, used for the SooGoings (Sioux Falls) deployment.
+// (Communico) events API, used for the SuFuGoings (Sioux Falls) deployment.
 //
 // Why: siouxland.libnet.info's bot protection 302-redirects non-browser
 // clients to google.com — verified 2026-06-10 from residential AND
@@ -13,7 +13,7 @@
 //
 // Deploy:  cd infra/siouxland-feed-worker && npx wrangler deploy
 // Secret:  npx wrangler secret put SIOUXLAND_KEY   (same value as the ?key=
-//          in the SooGoings .env SIOUXLAND_EVENTS_URL)
+//          in the SuFuGoings .env SIOUXLAND_EVENTS_URL)
 
 const ORIGIN = "https://siouxland.libnet.info/eeventcaldata"
 

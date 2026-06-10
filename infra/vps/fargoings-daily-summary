@@ -102,7 +102,7 @@ build_summary() {
     echo "DAILY TRAFFIC — $DATE"
     echo
     site_report "FARGOINGS (www.fargoings.com)" /var/log/apache2/fargoings_access.log.1
-    site_report "SOOGOINGS (soo.fargoings.com)" /var/log/apache2/soogoings_access.log.1
+    site_report "SUFUGOINGS (sufu.fargoings.com)" /var/log/apache2/soogoings_access.log.1
     if command -v fail2ban-client >/dev/null 2>&1; then
         local banned
         banned=$(fail2ban-client status apache-scanner 2>/dev/null \

@@ -17,7 +17,7 @@ A city module is one directory under `src/cities/<id>/`:
 | `fetchers.ts` | Fetch closures keyed by source id (the scraping stack — only `fetchers/registry.ts` reaches this, via `cities/fetchers.ts`) |
 | `venues.ts` | `VenueRule[]` for venue canonicalization/backfill |
 
-Cities: `fargo` (db `./events.db`) and `siouxfalls` ("SooGoings", db
+Cities: `fargo` (db `./events.db`) and `siouxfalls` ("SuFuGoings", db
 `./events-siouxfalls.db`). `src/fetchers/sources.ts` is a back-compat shim
 re-exporting the active city's metadata. The frontend gets branding/map config
 at runtime from `GET /api/config` (one build artifact serves any city;

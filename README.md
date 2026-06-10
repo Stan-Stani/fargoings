@@ -8,7 +8,7 @@ The same codebase powers one deployment per city, selected with the `CITY`
 env var (default `fargo`, so the original deploy is unchanged):
 
 - **Fargoings** (`CITY=fargo`) — Fargo-Moorhead, 17 sources, `./events.db`
-- **SooGoings** (`CITY=siouxfalls`) — Sioux Falls, SD, 9 sources,
+- **SuFuGoings** (`CITY=siouxfalls`) — Sioux Falls, SD, 9 sources,
   `./events-siouxfalls.db`
 
 Each city is a directory under `src/cities/<id>/` holding its branding, map

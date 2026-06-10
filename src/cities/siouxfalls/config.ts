@@ -6,9 +6,9 @@ export const siouxFallsCity: CityConfig = {
   id: "siouxfalls",
   displayName: "Sioux Falls",
   branding: {
-    siteTitle: "SooGoings",
+    siteTitle: "SuFuGoings",
     tagline: "Goings-On in Sioux Falls",
-    htmlTitle: "SooGoings | Goings-On in Sioux Falls",
+    htmlTitle: "SuFuGoings | Goings-On in Sioux Falls",
   },
   timeZone: "America/Chicago",
   map: {

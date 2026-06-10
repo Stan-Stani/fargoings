@@ -1,5 +1,5 @@
 // levitt-feed — Cloudflare Worker relay for the Levitt at the Falls
-// (levittsiouxfalls.org) The Events Calendar REST feed, used by SooGoings.
+// (levittsiouxfalls.org) The Events Calendar REST feed, used by SuFuGoings.
 //
 // Why: the site's WAF returns HTTP 403 to the production VPS's DigitalOcean
 // IP (and to IPs that probed it) — verified 2026-06-10. Same relay pattern
@@ -11,7 +11,7 @@
 //
 // Deploy:  cd infra/levitt-feed-worker && npx wrangler deploy
 // Secret:  npx wrangler secret put LEVITT_KEY   (same value as the ?key=
-//          in the SooGoings .env LEVITT_EVENTS_URL)
+//          in the SuFuGoings .env LEVITT_EVENTS_URL)
 
 const ORIGIN = "https://www.levittsiouxfalls.org/wp-json/tribe/events/v1/events"
 

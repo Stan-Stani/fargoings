@@ -4,7 +4,7 @@ _Last refreshed: 2026-06-10. Current version: v1.1.34._
 
 ## Shipped
 
-- **City module system + SooGoings (2026-06-10):**
+- **City module system + SuFuGoings (2026-06-10):**
   - **`src/cities/<id>/` modules** — per-city `config.ts` (branding, tz, map
     center/zoom, region bbox, db path — pure data), `sources.ts`,
     `fetchers.ts`, `venues.ts`. `CITY` env var picks the city (default
@@ -17,7 +17,7 @@ _Last refreshed: 2026-06-10. Current version: v1.1.34._
     `reenrich.ts` now uses `buildAllMatches()` — it previously rebuilt
     matches for only 5 of 17 sources, silently dropping the rest until the
     next full run (latent-drift bugfix).
-  - **SooGoings (Sioux Falls, SD)** — `CITY=siouxfalls`, db
+  - **SuFuGoings (Sioux Falls, SD)** — `CITY=siouxfalls`, db
     `events-siouxfalls.db`, 9 sources via 3 new config-driven platform
     fetchers + configs: **experiencesiouxfalls.com** (CVB, Craft CMS; the
     server-rendered Sprig listing is paginated `?page=N` with `<h2>` date
@@ -39,7 +39,7 @@ _Last refreshed: 2026-06-10. Current version: v1.1.34._
     — 403s datacenter + CF egress regardless of UA (residential
     intermittently OK after probe cooldowns). Relays `siouxland-feed` /
     `levitt-feed` (.workers.dev, secret-gated, keys in `~/.seldon/`) stay
-    deployed; the SooGoings VPS `.env` already carries both URLs. To re-add:
+    deployed; the SuFuGoings VPS `.env` already carries both URLs. To re-add:
     restore the SourceInfo entries in `src/cities/siouxfalls/sources.ts`
     (closures still wired). Durable fix: email both orgs' IT to allowlist —
     the West Fargo Library precedent. Levitt concerts partially arrive via
