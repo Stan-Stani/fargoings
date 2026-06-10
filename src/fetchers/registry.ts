@@ -10,6 +10,7 @@ import { FargoLibraryFetcher } from "./fargolibrary-org"
 import { FargoParksFetcher } from "./fargoparks-com"
 import { FargoFetcher } from "./fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fargounderground-com"
+import { GoCobbersFetcher } from "./gocobbers-com"
 import { MoorheadLibraryFetcher } from "./moorheadlibrary-org"
 import { MyNdsuFetcher } from "./myndsu-ndsu-edu"
 import { SidearmSportsFetcher } from "./sidearm-sports"
@@ -116,6 +117,11 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
       sourceId: "fargoforce.com",
       city: "Fargo",
     })
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "gocobbers.com": async () => {
+    const fetcher = new GoCobbersFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },

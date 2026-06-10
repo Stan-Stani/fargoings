@@ -132,6 +132,15 @@ export const SOURCE_INFO: SourceInfo[] = [
     allowEmpty: true,
     fetchHorizonDays: null,
   },
+  {
+    // Concordia athletics (PrestoSports) — campus events are separate scope.
+    source: "gocobbers.com",
+    aliases: ["concordia", "cobbers", "gocobbers"],
+    sports: true,
+    dedupPriority: 16,
+    allowEmpty: true,
+    fetchHorizonDays: null,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
