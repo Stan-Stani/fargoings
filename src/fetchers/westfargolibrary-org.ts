@@ -88,6 +88,21 @@ export class WestFargoLibraryFetcher {
     }
   }
 
+  // Locations in the feed are typed by hand per event, so the same building
+  // shows up under many spellings ("215 3rd St. E", "215 Third Street E",
+  // "... Main Location"). Venue grouping, map clustering, and dedup all key
+  // off the exact location string, so canonicalize the two library buildings.
+  private canonicalizeLocation(location: string | null): string | null {
+    if (!location) return null
+    if (/west fargo public library/i.test(location) && /\b215\b/.test(location)) {
+      return "West Fargo Public Library, 215 3rd St E West Fargo ND 58078"
+    }
+    if (/satellite library|commission chambers/i.test(location) && /\b2515\b/.test(location)) {
+      return "West Fargo City Hall & Satellite Library, 2515 6th St E West Fargo ND 58078"
+    }
+    return location
+  }
+
   transformToStoredEvent(
     event: WestFargoLibraryEvent,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
@@ -97,7 +112,7 @@ export class WestFargoLibraryFetcher {
       eventId: `wfpl_${event.uid}_${event.date}`,
       title: event.title,
       url: `${this.eventDetailBase}${event.uid}`,
-      location: event.location,
+      location: this.canonicalizeLocation(event.location),
       date: event.date,
       startTime: event.startTime,
       startDate: event.date,
