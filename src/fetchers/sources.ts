@@ -96,6 +96,12 @@ export const SOURCE_INFO: SourceInfo[] = [
     sports: true,
     dedupPriority: 9,
   },
+  {
+    source: "aquariumfargo.com",
+    aliases: ["aquarium"],
+    sports: false,
+    dedupPriority: 10,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)

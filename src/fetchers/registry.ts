@@ -2,6 +2,7 @@ import { findMatches, findSelfMatches, MatchScore } from "../dedup/matcher"
 import { EventDatabase } from "../db/database"
 import { logError } from "../log"
 import { StoredEvent } from "../types/event"
+import { AquariumFargoFetcher } from "./aquariumfargo-com"
 import { DowntownFargoFetcher } from "./downtownfargo-com"
 import { DrekkerBrewingFetcher } from "./drekkerbrewing-com"
 import { FargoLibraryFetcher } from "./fargolibrary-org"
@@ -82,6 +83,11 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
       sourceId: "msumdragons.com",
       city: "Moorhead",
     })
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "aquariumfargo.com": async () => {
+    const fetcher = new AquariumFargoFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },
