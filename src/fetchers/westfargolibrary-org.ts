@@ -1,24 +1,14 @@
 import { readFileSync } from "node:fs"
-import { decodeHtmlEntities } from "../dedup/normalize"
 import { logError } from "../log"
 import { StoredEvent } from "../types/event"
+import { ICalEvent, parseICal } from "./ical"
 import {
   DEFAULT_BROWSER_HEADERS,
   fetchWithRetry,
   getDateRangeInTimeZone,
 } from "./shared"
 
-export interface WestFargoLibraryEvent {
-  uid: string
-  title: string
-  /** Local (America/Chicago) date, YYYY-MM-DD */
-  date: string
-  /** Local end date, YYYY-MM-DD */
-  endDate: string
-  /** Local wall-clock start, HH:MM:SS, or null for all-day entries */
-  startTime: string | null
-  location: string | null
-}
+export type WestFargoLibraryEvent = ICalEvent
 
 /**
  * West Fargo Public Library is its own venue and is NOT covered by the
@@ -72,7 +62,7 @@ export class WestFargoLibraryFetcher {
         )
         ical = await response.text()
       }
-      const parsed = this.parseICal(ical)
+      const parsed = parseICal(ical, this.timeZone)
 
       // The feed expands recurring events far into the future; keep only the
       // window we care about (inclusive, lexicographic works on YYYY-MM-DD).
@@ -119,153 +109,5 @@ export class WestFargoLibraryFetcher {
       categories: JSON.stringify([]),
       source: "westfargolibrary.org",
     }
-  }
-
-  /** Minimal RFC 5545 parser: just the VEVENT fields we consume. */
-  private parseICal(raw: string): WestFargoLibraryEvent[] {
-    const lines = this.unfold(raw)
-    const events: WestFargoLibraryEvent[] = []
-
-    let current: Record<string, { params: string; value: string }> | null = null
-
-    for (const line of lines) {
-      if (line === "BEGIN:VEVENT") {
-        current = {}
-        continue
-      }
-      if (line === "END:VEVENT") {
-        if (current) {
-          const event = this.toEvent(current)
-          if (event) events.push(event)
-        }
-        current = null
-        continue
-      }
-      if (!current) continue
-
-      const colon = line.indexOf(":")
-      if (colon === -1) continue
-      const namePart = line.slice(0, colon)
-      const value = line.slice(colon + 1)
-      const semi = namePart.indexOf(";")
-      const name = (semi === -1 ? namePart : namePart.slice(0, semi)).toUpperCase()
-      const params = semi === -1 ? "" : namePart.slice(semi + 1)
-      current[name] = { params, value }
-    }
-
-    return events
-  }
-
-  /** RFC 5545 line unfolding: a leading space/tab continues the prior line. */
-  private unfold(raw: string): string[] {
-    const physical = raw.split(/\r\n|\n|\r/)
-    const logical: string[] = []
-    for (const line of physical) {
-      if ((line.startsWith(" ") || line.startsWith("\t")) && logical.length) {
-        logical[logical.length - 1] += line.slice(1)
-      } else {
-        logical.push(line)
-      }
-    }
-    return logical
-  }
-
-  private toEvent(
-    fields: Record<string, { params: string; value: string }>,
-  ): WestFargoLibraryEvent | null {
-    const dtStart = fields["DTSTART"]
-    const summary = fields["SUMMARY"]
-    if (!dtStart || !summary) return null
-
-    const start = this.parseDateTime(dtStart.params, dtStart.value)
-    if (!start) return null
-
-    const dtEnd = fields["DTEND"]
-    const end = dtEnd ? this.parseDateTime(dtEnd.params, dtEnd.value) : null
-
-    const uid = (fields["UID"]?.value || "").trim()
-    const title = this.unescapeText(summary.value).trim()
-
-    return {
-      uid: uid || `${start.date}-${this.slug(title)}`,
-      title,
-      date: start.date,
-      endDate: end?.date ?? start.date,
-      startTime: start.time,
-      location: this.cleanLocation(fields["LOCATION"]?.value),
-    }
-  }
-
-  /**
-   * Returns local wall-clock date/time. Feed values are either
-   * `;VALUE=DATE:YYYYMMDD` (all-day) or `;TZID=America/Chicago:YYYYMMDDThhmmss`
-   * (already local — kept as-is to avoid VPS timezone shifts). A trailing `Z`
-   * (UTC) is converted to America/Chicago defensively.
-   */
-  private parseDateTime(
-    params: string,
-    value: string,
-  ): { date: string; time: string | null } | null {
-    const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/)
-    if (dateOnly || /VALUE=DATE\b/i.test(params)) {
-      const m = dateOnly ?? value.match(/^(\d{4})(\d{2})(\d{2})/)
-      if (!m) return null
-      return { date: `${m[1]}-${m[2]}-${m[3]}`, time: null }
-    }
-
-    const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/)
-    if (!m) return null
-    const [, y, mo, d, h, mi, s, z] = m
-
-    if (z) {
-      const utc = new Date(
-        Date.UTC(+y, +mo - 1, +d, +h, +mi, +s),
-      )
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: this.timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).formatToParts(utc)
-      const get = (t: string) =>
-        parts.find((p) => p.type === t)?.value ?? "00"
-      const hour = get("hour") === "24" ? "00" : get("hour")
-      return {
-        date: `${get("year")}-${get("month")}-${get("day")}`,
-        time: `${hour}:${get("minute")}:${get("second")}`,
-      }
-    }
-
-    return { date: `${y}-${mo}-${d}`, time: `${h}:${mi}:${s}` }
-  }
-
-  private unescapeText(value: string): string {
-    return value
-      .replace(/\\n/gi, " ")
-      .replace(/\\,/g, ",")
-      .replace(/\\;/g, ";")
-      .replace(/\\\\/g, "\\")
-  }
-
-  private cleanLocation(value: string | undefined): string | null {
-    if (!value) return null
-    const text = decodeHtmlEntities(this.unescapeText(value))
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/\s+-\s+/, ", ")
-      .trim()
-    return text.length ? text : null
-  }
-
-  private slug(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60)
   }
 }

@@ -105,6 +105,48 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   return sign * (hours * 60 + minutes)
 }
 
+/**
+ * Convert a UTC instant to wall-clock date/time in the given timezone.
+ * Returns YYYY-MM-DD and HH:MM:SS (Intl can emit hour "24" for midnight;
+ * normalized to "00").
+ */
+export function utcInstantToLocal(
+  at: Date,
+  timeZone: string,
+): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(at)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00"
+  const hour = get("hour") === "24" ? "00" : get("hour")
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${hour}:${get("minute")}:${get("second")}`,
+  }
+}
+
+/** First <name>…</name> value in an RSS/XML fragment, CDATA unwrapped. */
+export function rssTag(item: string, name: string): string {
+  const m = item.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, "i"))
+  if (!m) return ""
+  return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim()
+}
+
+export function slugify(text: string, maxLength: number = 60): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength)
+}
+
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,

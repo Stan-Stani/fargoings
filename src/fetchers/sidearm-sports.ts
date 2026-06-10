@@ -1,7 +1,13 @@
 import { decodeHtmlEntities } from "../dedup/normalize"
 import { logError } from "../log"
 import { StoredEvent } from "../types/event"
-import { DEFAULT_BROWSER_HEADERS, fetchWithRetry } from "./shared"
+import {
+  DEFAULT_BROWSER_HEADERS,
+  fetchWithRetry,
+  rssTag,
+  slugify,
+  utcInstantToLocal,
+} from "./shared"
 
 export interface SidearmEvent {
   title: string
@@ -54,10 +60,10 @@ export class SidearmSportsFetcher {
       const events: SidearmEvent[] = []
       for (const block of xml.split("<item>").slice(1)) {
         const item = block.split("</item>")[0]
-        const title = this.tag(item, "title")
-        const link = this.tag(item, "link")
-        const startRaw = this.tag(item, "ev:startdate")
-        const localDate = this.tag(item, "s:localstartdate")
+        const title = rssTag(item, "title")
+        const link = rssTag(item, "link")
+        const startRaw = rssTag(item, "ev:startdate")
+        const localDate = rssTag(item, "s:localstartdate")
         if (!title || !startRaw) continue
         events.push({ title, link, startRaw, localDate })
       }
@@ -103,7 +109,7 @@ export class SidearmSportsFetcher {
 
     const gameId = event.link.match(/game_id=(\d+)/)?.[1]
     const eventId = `${this.config.sourceId.split(".")[0]}_${
-      gameId ?? this.slug(`${date}-${title}`)
+      gameId ?? slugify(`${date}-${title}`)
     }`
     // admin.<school>.com is the editor host; use the public one.
     const url = event.link.replace(/\/\/admin\./, "//www.")
@@ -139,22 +145,8 @@ export class SidearmSportsFetcher {
     if (utc && event.startRaw.endsWith("Z")) {
       const [, y, mo, d, h, mi, s] = utc
       const at = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s))
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: this.timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).formatToParts(at)
-      const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00"
-      const hour = g("hour") === "24" ? "00" : g("hour")
-      return {
-        date: `${g("year")}-${g("month")}-${g("day")}`,
-        startTime: `${hour}:${g("minute")}:${g("second")}`,
-      }
+      const local = utcInstantToLocal(at, this.timeZone)
+      return { date: local.date, startTime: local.time }
     }
 
     // Date-only / TBD time: prefer the school-local date.
@@ -164,21 +156,4 @@ export class SidearmSportsFetcher {
     return { date, startTime: null }
   }
 
-  private tag(item: string, name: string): string {
-    const m = item.match(
-      new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, "i"),
-    )
-    if (!m) return ""
-    return m[1]
-      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-      .trim()
-  }
-
-  private slug(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60)
-  }
 }

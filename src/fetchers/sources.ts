@@ -19,6 +19,19 @@ export interface SourceInfo {
    * kept as altUrl on the surviving row).
    */
   dedupPriority: number
+  /**
+   * This source's feed is legitimately empty for long stretches (e.g. a
+   * seasonal schedule between seasons), so a 0-event run is not the
+   * silent-relay-death signature and must not flag health.
+   */
+  allowEmpty?: boolean
+  /**
+   * How many days ahead this source's fetch reliably covers. Events dated
+   * beyond the horizon may simply be outside the fetch window, so
+   * possibly-cancelled detection only applies within it. Omitted = 14 (the
+   * default daysAhead everywhere); null = never apply cancelled detection.
+   */
+  fetchHorizonDays?: number | null
 }
 
 export const SOURCE_INFO: SourceInfo[] = [
@@ -69,6 +82,7 @@ export const SOURCE_INFO: SourceInfo[] = [
     aliases: ["drekker", "drekkerbrewing"],
     sports: false,
     dedupPriority: 7,
+    allowEmpty: true,
   },
   {
     source: "gobison.com",
@@ -91,5 +105,10 @@ export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
  * default (high volume), revealed via the "Show sports" toggle.
  */
 export const SPORTS_SOURCES = SOURCE_INFO.filter((s) => s.sports).map(
+  (s) => s.source,
+)
+
+/** Sources whose 0-event runs are expected (seasonal feeds), not failures. */
+export const ALLOW_EMPTY_SOURCES = SOURCE_INFO.filter((s) => s.allowEmpty).map(
   (s) => s.source,
 )

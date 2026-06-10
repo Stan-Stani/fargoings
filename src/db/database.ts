@@ -1,6 +1,6 @@
 import Database from "better-sqlite3"
 import { decodeHtmlEntities } from "../dedup/normalize"
-import { SPORTS_SOURCES } from "../fetchers/sources"
+import { ALLOW_EMPTY_SOURCES, SPORTS_SOURCES } from "../fetchers/sources"
 import { StoredEvent } from "../types/event"
 import { VENUE_RULES } from "../enrichment/venues"
 
@@ -500,8 +500,9 @@ export class EventDatabase {
    * Per-source health derived from source_runs. A source is flagged when its
    * last completed (non-skipped) run errored, when it has failed twice in a
    * row, or when it returned 0 events despite returning some within the last
-   * 30 days (the silent-relay-death signature). Sources with no recorded
-   * runs yet are reported but not flagged.
+   * 30 days (the silent-relay-death signature; sources marked allowEmpty are
+   * exempt — their feeds go legitimately quiet between seasons). Sources with
+   * no recorded runs yet are reported but not flagged.
    */
   getSourceHealth(expectedSources: string[] = []): SourceHealth[] {
     const rows = this.db
@@ -550,6 +551,7 @@ export class EventDatabase {
       if (
         last?.status === "ok" &&
         last.eventCount === 0 &&
+        !ALLOW_EMPTY_SOURCES.includes(source) &&
         completed.some(
           (r) =>
             r.status === "ok" &&
