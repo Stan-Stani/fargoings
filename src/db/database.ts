@@ -562,6 +562,12 @@ export class EventDatabase {
 
     const bySource = new Map<string, (SourceRunRecord & { runAt: string })[]>()
     for (const row of rows) {
+      // When an expected list is given, sources outside it are ignored —
+      // old source_runs rows from a retired/unlisted source must not flag
+      // health forever.
+      if (expectedSources.length > 0 && !expectedSources.includes(row.source)) {
+        continue
+      }
       const list = bySource.get(row.source) || []
       list.push(row)
       bySource.set(row.source, list)

@@ -24,14 +24,11 @@ export const SIOUXFALLS_SOURCE_INFO: SourceInfo[] = [
     dedupPriority: 2,
     fetchHorizonDays: 365,
   },
-  {
-    // ~50 free outdoor concerts per season; feed is empty all winter.
-    source: "levittsiouxfalls.org",
-    aliases: ["levitt", "levittsiouxfalls"],
-    sports: false,
-    dedupPriority: 3,
-    allowEmpty: true,
-  },
+  // levittsiouxfalls.org and siouxlandlib.org are wired up (fetch closures +
+  // relay workers exist) but UNLISTED: both WAFs block residential,
+  // datacenter, AND Cloudflare Worker egress (2026-06-10). Re-add the
+  // SourceInfo entries once the orgs allowlist us — see PLAN.md. Levitt
+  // concerts partially arrive via dtsf.com/experiencesiouxfalls.com.
   {
     // Arena shows announced months out (Simpleview, ASM-managed complex).
     source: "dennysanfordpremiercenter.com",
@@ -39,12 +36,6 @@ export const SIOUXFALLS_SOURCE_INFO: SourceInfo[] = [
     sports: false,
     dedupPriority: 4,
     fetchHorizonDays: 365,
-  },
-  {
-    source: "siouxlandlib.org",
-    aliases: ["siouxland", "siouxlandlib", "library"],
-    sports: false,
-    dedupPriority: 5,
   },
   {
     // Augustana University athletics (Sidearm).

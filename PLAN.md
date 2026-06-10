@@ -27,15 +27,25 @@ _Last refreshed: 2026-06-10. Current version: v1.1.34._
     (`tribe-rest.ts`), **dennysanfordpremiercenter.com** (`simpleview.ts` —
     same token+rest_v2 flow as fargomoorhead.org, `defaultLocation` config
     because the arena leaves `location` empty), **siouxlandlib.org**
-    (`communico.ts`, 6 branches — the WAF 302s-to-google from residential
-    AND datacenter IPs, so `SIOUXLAND_EVENTS_URL` relay is required even
-    locally; `infra/siouxland-feed-worker/` is the relay, deploy blocked on
-    `wrangler login` re-auth), **goaugie.com / usfcougars.com /
+    (`communico.ts`, 6 branches), **goaugie.com / usfcougars.com /
     sfstampede.com** (Sidearm configs). 6 venue rules (Pavilion, Orpheum,
     Levitt, Premier Center, Convention Center, Falls Park; coords from
-    upstream feeds + Nominatim). **levittsiouxfalls.org 403s the dev
-    machine's IP** (Wordfence-style block after probing) — verify from the
-    VPS; it may need a relay too.
+    upstream feeds + Nominatim).
+  - **Blocked sources (fetchers + relay workers built, SourceInfo entries
+    UNLISTED — 7 of the 9 ship):** `siouxlandlib.org` — the Communico WAF
+    302s-to-google from residential, DO datacenter, AND Cloudflare Worker
+    IPs (every egress we have); `api.communico.co/v1/siouxland/*` serves
+    locations but events return `[]` unauthenticated. `levittsiouxfalls.org`
+    — 403s datacenter + CF egress regardless of UA (residential
+    intermittently OK after probe cooldowns). Relays `siouxland-feed` /
+    `levitt-feed` (.workers.dev, secret-gated, keys in `~/.seldon/`) stay
+    deployed; the SooGoings VPS `.env` already carries both URLs. To re-add:
+    restore the SourceInfo entries in `src/cities/siouxfalls/sources.ts`
+    (closures still wired). Durable fix: email both orgs' IT to allowlist —
+    the West Fargo Library precedent. Levitt concerts partially arrive via
+    dtsf.com + ESF copies; library programming is the real coverage gap.
+    `getSourceHealth()` now restricts to the expected-source list so a
+    retired/unlisted source's old runs can't flag health forever.
 
 - **Venue coverage + list quality round (2026-06-10):**
   - **7 new sources** (registry pattern, one commit each): **The Aquarium**

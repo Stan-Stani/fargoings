@@ -31,9 +31,11 @@ export default {
         headers: {
           Accept: "application/json",
           "Accept-Language": "en-US,en;q=0.9",
-          Referer: "https://www.levittsiouxfalls.org/events/",
+          // Honest aggregator UA — Wordfence-class WAFs score a fake browser
+          // fingerprint (Chrome UA without browser TLS/headers) WORSE than a
+          // declared bot.
           "User-Agent":
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "soogoings-aggregator/1.0 (+https://www.fargoings.com)",
         },
         // Short edge cache; the date window changes daily so the cache key
         // (full query) naturally rotates.
