@@ -109,6 +109,16 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },
+  "fargoforce.com": async () => {
+    const fetcher = new SidearmSportsFetcher({
+      baseUrl: "https://fargoforce.com",
+      schoolName: "Fargo Force",
+      sourceId: "fargoforce.com",
+      city: "Fargo",
+    })
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
 }
 
 /**

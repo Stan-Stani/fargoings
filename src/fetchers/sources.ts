@@ -123,6 +123,15 @@ export const SOURCE_INFO: SourceInfo[] = [
     dedupPriority: 13,
     fetchHorizonDays: 365,
   },
+  {
+    // USHL hockey (Scheels Arena); feed is empty in the offseason.
+    source: "fargoforce.com",
+    aliases: ["force", "fargoforce"],
+    sports: true,
+    dedupPriority: 15,
+    allowEmpty: true,
+    fetchHorizonDays: null,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
