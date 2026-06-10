@@ -10,6 +10,7 @@ import { FargoParksFetcher } from "./fargoparks-com"
 import { FargoFetcher } from "./fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fargounderground-com"
 import { MoorheadLibraryFetcher } from "./moorheadlibrary-org"
+import { MyNdsuFetcher } from "./myndsu-ndsu-edu"
 import { SidearmSportsFetcher } from "./sidearm-sports"
 import { SOURCE_INFO, SourceInfo } from "./sources"
 import { WestFargoEventsFetcher } from "./westfargoevents-com"
@@ -94,6 +95,11 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
   },
   "fargoparks.com": async () => {
     const fetcher = new FargoParksFetcher()
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "myndsu.ndsu.edu": async () => {
+    const fetcher = new MyNdsuFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },

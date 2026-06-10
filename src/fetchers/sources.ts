@@ -108,6 +108,13 @@ export const SOURCE_INFO: SourceInfo[] = [
     sports: false,
     dedupPriority: 11,
   },
+  {
+    // NDSU campus/student-org events (Engage) — athletics is gobison.com.
+    source: "myndsu.ndsu.edu",
+    aliases: ["ndsucampus", "myndsu"],
+    sports: false,
+    dedupPriority: 12,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
