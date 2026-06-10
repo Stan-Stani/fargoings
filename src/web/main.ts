@@ -1,4 +1,7 @@
 import L from "leaflet"
+import "leaflet.markercluster"
+import "leaflet.markercluster/dist/MarkerCluster.css"
+import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 import { createElement, Moon, SlidersHorizontal, Sun, SunMoon, X } from "lucide"
 import { decode } from "he"
 
@@ -16,6 +19,12 @@ type EventItem = {
   longitude: number | null
 }
 
+/** Slim shape served by /api/events/map — just what a marker needs. */
+type MapEventItem = Pick<
+  EventItem,
+  "title" | "date" | "startTime" | "location" | "url" | "latitude" | "longitude"
+>
+
 type ViewMode = "list" | "map"
 
 type EventsResponse = {
@@ -24,6 +33,12 @@ type EventsResponse = {
   page: number
   pageSize: number
   totalPages: number
+}
+
+type MapEventsResponse = {
+  items: MapEventItem[]
+  total: number
+  mappable: number
 }
 
 type ThemePreference = "auto" | "light" | "dark"
@@ -43,10 +58,17 @@ let timeSortDir: "asc" | "desc" = "asc"
 const showSportsStorageKey = "showSports"
 let showSports = localStorage.getItem(showSportsStorageKey) === "1"
 let currentItems: EventItem[] = []
+let totalResults = 0
 let isLoading = false
 let viewMode: ViewMode = "list"
 let mapInstance: L.Map | null = null
 let mapMarkers: L.LayerGroup | null = null
+// Map view loads ALL matching events via /api/events/map (the list only has
+// the pages fetched so far). Invalidated whenever a filter changes.
+let mapItems: MapEventItem[] | null = null
+let mapTotal = 0
+let mapMappable = 0
+let isMapLoading = false
 
 // Same-venue events on the same day get collapsed into a clickable group
 // header once this many share a (date, location) so dense venues (e.g.
@@ -417,10 +439,16 @@ function initMap(): void {
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
   }).addTo(mapInstance)
-  mapMarkers = L.layerGroup().addTo(mapInstance)
+  // Clustered markers: dense venues (Paradox runs several events per day at
+  // identical coords) stack exactly on top of each other otherwise.
+  mapMarkers = L.markerClusterGroup({
+    maxClusterRadius: 40,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+  }).addTo(mapInstance)
 }
 
-function renderMap(items: EventItem[]): void {
+function renderMap(items: MapEventItem[]): void {
   if (!mapInstance || !mapMarkers) return
   mapMarkers.clearLayers()
 
@@ -474,6 +502,63 @@ function renderMap(items: EventItem[]): void {
   mapInstance.setView(initial.center, initial.zoom, { animate: false })
 }
 
+function updateListMeta(): void {
+  metaEl.textContent =
+    "Showing " +
+    currentItems.length +
+    " of " +
+    totalResults +
+    " results" +
+    (query ? ' for "' + query + '"' : "")
+}
+
+function updateMapMeta(): void {
+  const unmapped = mapTotal - mapMappable
+  metaEl.textContent =
+    `Showing ${mapMappable} markers` +
+    (unmapped > 0 ? ` (${unmapped} events without coordinates)` : "")
+}
+
+async function loadMapEvents(): Promise<void> {
+  if (isMapLoading) return
+  isMapLoading = true
+
+  const params = new URLSearchParams()
+  if (query) params.set("q", query)
+  if (categoryFilter) params.set("category", categoryFilter)
+  if (datePreset && datePreset !== "all") params.set("preset", datePreset)
+  if (showSports) params.set("sports", "show")
+
+  try {
+    const response = await fetch("/api/events/map?" + params.toString(), {
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!response.ok) {
+      const bodyPreview = (await response.text()).slice(0, 200)
+      throw new Error(
+        `HTTP ${response.status} ${response.statusText}: ${bodyPreview}`,
+      )
+    }
+    const data = (await response.json()) as MapEventsResponse
+    mapItems = data.items || []
+    mapTotal = data.total
+    mapMappable = data.mappable
+    if (viewMode === "map") {
+      renderMap(mapItems)
+      updateMapMeta()
+    }
+  } catch (error) {
+    console.error("❌ Failed to load map events:", error)
+    if (viewMode === "map") {
+      metaEl.textContent =
+        "Error loading map events. " +
+        (error instanceof Error ? error.message : String(error))
+    }
+  } finally {
+    isMapLoading = false
+  }
+}
+
 function setViewMode(mode: ViewMode): void {
   viewMode = mode
   viewToggleBtn.textContent = mode === "list" ? "Map view" : "List view"
@@ -490,8 +575,15 @@ function setViewMode(mode: ViewMode): void {
     queueMicrotask(() => {
       mapInstance?.invalidateSize()
     })
-    // Map view renders markers for whatever the table has already loaded.
-    renderMap(currentItems)
+    // Map view shows ALL matching events, fetched separately from the list's
+    // pagination.
+    if (mapItems) {
+      renderMap(mapItems)
+      updateMapMeta()
+    } else {
+      metaEl.textContent = "Loading map…"
+      loadMapEvents()
+    }
   } else {
     mapContainerEl.style.display = "none"
     // Important on mobile: CSS sets #tableWrapContainer to `display: contents` so
@@ -499,6 +591,7 @@ function setViewMode(mode: ViewMode): void {
     // Forcing `display: block` here breaks scrolling because `body` is
     // `overflow: hidden` on small screens.
     tableWrapContainerEl.style.display = ""
+    updateListMeta()
   }
 
   updateLoadMoreUi()
@@ -935,6 +1028,32 @@ function updateLoadMoreUi(): void {
   loadMoreBtn.disabled = !hasMore || isLoading
 }
 
+function renderErrorState(message: string): void {
+  rowsEl.innerHTML = ""
+  venueGroupRefs.clear()
+
+  const tr = document.createElement("tr")
+  tr.className = "error-row"
+  const td = document.createElement("td")
+  td.colSpan = 5
+
+  const messageEl = document.createElement("div")
+  messageEl.className = "error-message"
+  messageEl.textContent = `Couldn't load events. ${message}`
+  td.appendChild(messageEl)
+
+  const retryBtn = document.createElement("button")
+  retryBtn.type = "button"
+  retryBtn.textContent = "Retry"
+  retryBtn.addEventListener("click", () => {
+    load("replace")
+  })
+  td.appendChild(retryBtn)
+
+  tr.appendChild(td)
+  rowsEl.appendChild(tr)
+}
+
 async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   if (isLoading) {
     return
@@ -954,7 +1073,10 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   if (showSports) params.set("sports", "show")
 
   try {
-    const response = await fetch(apiPath + "?" + params.toString())
+    // Timeout so a hung request can't strand the UI on "Loading…" forever.
+    const response = await fetch(apiPath + "?" + params.toString(), {
+      signal: AbortSignal.timeout(15000),
+    })
     if (!response.ok) {
       const bodyPreview = (await response.text()).slice(0, 200)
       throw new Error(
@@ -967,6 +1089,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
 
     page = data.page || page
     totalPages = data.totalPages || 1
+    totalResults = data.total
 
     // Always re-render from the full currentItems set so venue grouping stays
     // consistent across paginated loads. (For 50–500 rows the cost is trivial
@@ -985,31 +1108,41 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
       tableWrapEl?.scrollTo({ top: previousScrollTop, left: 0, behavior: "auto" })
     }
 
-    metaEl.textContent =
-      "Showing " +
-      currentItems.length +
-      " of " +
-      data.total +
-      " results" +
-      (query ? ' for "' + query + '"' : "")
+    if (viewMode === "list") {
+      updateListMeta()
+    }
 
     hasMore =
       page < totalPages &&
       currentItems.length < data.total &&
       newItems.length > 0
-
-    // Keep map markers in sync with the list.
-    if (viewMode === "map") {
-      renderMap(currentItems)
-    }
   } catch (error) {
-    metaEl.textContent =
-      "Error loading events. " +
-      (error instanceof Error ? error.message : String(error))
+    const message = error instanceof Error ? error.message : String(error)
+    metaEl.textContent = "Error loading events. " + message
     console.error("❌ Failed to load events:", error)
+    if (mode === "replace") {
+      // Replace the empty table with an explicit error + retry affordance;
+      // a failed "append" keeps the rows already loaded.
+      currentItems = []
+      hasMore = false
+      renderErrorState(message)
+    }
   } finally {
     isLoading = false
     updateLoadMoreUi()
+  }
+}
+
+/**
+ * Re-query after a filter change: reset list pagination and invalidate the
+ * map's all-events cache (refetching it immediately if the map is visible).
+ */
+function applyFiltersChanged(): void {
+  page = 1
+  mapItems = null
+  load("replace")
+  if (viewMode === "map") {
+    loadMapEvents()
   }
 }
 
@@ -1024,8 +1157,7 @@ loadMoreBtn.addEventListener("click", () => {
 searchBtn.addEventListener("click", () => {
   query = searchInput.value.trim()
   syncFiltersToggleButtonState()
-  page = 1
-  load("replace")
+  applyFiltersChanged()
 })
 
 clearBtn.addEventListener("click", () => {
@@ -1034,8 +1166,7 @@ clearBtn.addEventListener("click", () => {
   categoryFilter = ""
   categoryFilterEl.value = ""
   syncFiltersToggleButtonState()
-  page = 1
-  load("replace")
+  applyFiltersChanged()
 })
 
 searchInput.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -1091,8 +1222,7 @@ function setDatePreset(preset: string): void {
       btn.dataset.preset === preset ? "true" : "false",
     )
   })
-  page = 1
-  load("replace")
+  applyFiltersChanged()
 }
 
 presetBtns.forEach((btn) => {
@@ -1104,16 +1234,14 @@ presetBtns.forEach((btn) => {
 categoryFilterEl.addEventListener("change", () => {
   categoryFilter = categoryFilterEl.value
   syncFiltersToggleButtonState()
-  page = 1
-  load("replace")
+  applyFiltersChanged()
 })
 
 showSportsToggleEl.checked = showSports
 showSportsToggleEl.addEventListener("change", () => {
   showSports = showSportsToggleEl.checked
   localStorage.setItem(showSportsStorageKey, showSports ? "1" : "0")
-  page = 1
-  load("replace")
+  applyFiltersChanged()
 })
 
 async function populateCategoryFilter(): Promise<void> {

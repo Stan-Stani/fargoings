@@ -1,13 +1,10 @@
 import Database from "better-sqlite3"
+import { decodeHtmlEntities } from "../dedup/normalize"
+import { SPORTS_SOURCES } from "../fetchers/sources"
 import { StoredEvent } from "../types/event"
 import { VENUE_RULES } from "../enrichment/venues"
 
-/**
- * Sources whose events are sports schedules — hidden from the main feed by
- * default (high volume), revealed via the "Show sports" toggle. Keep in sync
- * with any new athletics fetchers.
- */
-export const SPORTS_SOURCES = ["gobison.com", "msumdragons.com"]
+export { SPORTS_SOURCES }
 
 export interface EventMatch {
   id: number
@@ -32,6 +29,8 @@ export interface DisplayEvent {
   city: string | null
   imageUrl: string | null
   categories: string
+  /** First category name, decoded — precomputed at rebuild time for the API. */
+  category: string | null
   source: string
   latitude: number | null
   longitude: number | null
@@ -44,12 +43,38 @@ export interface DisplayEventQueryResult {
   total: number
 }
 
+export interface SourceRunRecord {
+  source: string
+  runType: string
+  status: "ok" | "error" | "skipped"
+  eventCount: number | null
+  durationMs: number | null
+  errorMessage: string | null
+}
+
+export interface SourceHealth {
+  source: string
+  lastRunAt: string | null
+  lastStatus: string | null
+  lastEventCount: number | null
+  lastSuccessAt: string | null
+  lastErrorMessage: string | null
+  consecutiveFailures: number
+  flagged: boolean
+  flagReasons: string[]
+}
+
 export class EventDatabase {
   private db: Database.Database
   private readonly displayTimeZone = "America/Chicago"
 
   constructor(dbPath: string = "./events.db") {
     this.db = new Database(dbPath)
+    // The weekly cron writer and the long-running API reader share this
+    // file; WAL + a busy timeout keep readers from hitting SQLITE_BUSY
+    // during the rebuild transaction.
+    this.db.pragma("journal_mode = WAL")
+    this.db.pragma("busy_timeout = 5000")
     this.initialize()
   }
 
@@ -135,6 +160,141 @@ export class EventDatabase {
       this.db.exec(
         "ALTER TABLE display_events ADD COLUMN latitude REAL; ALTER TABLE display_events ADD COLUMN longitude REAL;",
       )
+    }
+
+    this.runMigrations()
+  }
+
+  /**
+   * Versioned one-shot migrations via PRAGMA user_version. Each migration
+   * runs once, in order, inside a transaction. The first process to open
+   * the DB after a deploy applies them (cron, API server, or a CLI script —
+   * all construct EventDatabase).
+   */
+  private runMigrations() {
+    const version = this.db.pragma("user_version", { simple: true }) as number
+
+    if (version < 1) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS source_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            runAt TEXT DEFAULT CURRENT_TIMESTAMP,
+            runType TEXT NOT NULL,
+            status TEXT NOT NULL,
+            eventCount INTEGER,
+            durationMs INTEGER,
+            errorMessage TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_source_runs_source
+            ON source_runs(source, id DESC);
+        `)
+        const displayCols = (
+          this.db.prepare("PRAGMA table_info(display_events)").all() as {
+            name: string
+          }[]
+        ).map((c) => c.name)
+        if (!displayCols.includes("category")) {
+          this.db.exec("ALTER TABLE display_events ADD COLUMN category TEXT")
+        }
+        this.db.pragma("user_version = 1")
+      })()
+    }
+
+    if (version < 2) {
+      // One-time decode of HTML entities now that insertEvent stores decoded
+      // text (the API no longer decodes per request). display_events is
+      // included so prod renders correctly before the next weekly rebuild.
+      this.db.transaction(() => {
+        for (const table of ["events", "display_events"]) {
+          const rows = this.db
+            .prepare(
+              `SELECT id, title, location, city FROM ${table}
+               WHERE title LIKE '%&%' OR location LIKE '%&%' OR city LIKE '%&%'`,
+            )
+            .all() as {
+            id: number
+            title: string
+            location: string | null
+            city: string | null
+          }[]
+          const update = this.db.prepare(
+            `UPDATE ${table} SET title = ?, location = ?, city = ? WHERE id = ?`,
+          )
+          for (const row of rows) {
+            const title = decodeHtmlEntities(row.title)
+            const location = row.location
+              ? decodeHtmlEntities(row.location)
+              : row.location
+            const city = row.city ? decodeHtmlEntities(row.city) : row.city
+            if (
+              title !== row.title ||
+              location !== row.location ||
+              city !== row.city
+            ) {
+              update.run(title, location, city, row.id)
+            }
+          }
+        }
+        // Backfill the category column for existing display rows.
+        this.populateDisplayCategories()
+        this.db.pragma("user_version = 2")
+      })()
+    }
+  }
+
+  /** First category name from the categories JSON, decoded, or null. */
+  private extractCategory(categoriesRaw: string | null): string | null {
+    if (!categoriesRaw) {
+      return null
+    }
+
+    try {
+      const parsed = JSON.parse(categoriesRaw) as unknown
+
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const first = parsed[0]
+
+        if (typeof first === "string") {
+          return decodeHtmlEntities(first)
+        }
+
+        if (first && typeof first === "object") {
+          const record = first as Record<string, unknown>
+
+          if (typeof record.catName === "string") {
+            return decodeHtmlEntities(record.catName)
+          }
+
+          if (typeof record.name === "string") {
+            return decodeHtmlEntities(record.name)
+          }
+        }
+      }
+    } catch {
+      return decodeHtmlEntities(categoriesRaw)
+    }
+
+    return null
+  }
+
+  /**
+   * Set display_events.category from the categories JSON. One UPDATE per
+   * distinct categories string, so this touches far fewer rows than a
+   * per-row pass. Callers run it inside their own transaction.
+   */
+  private populateDisplayCategories(): void {
+    const rows = this.db
+      .prepare(
+        "SELECT DISTINCT categories FROM display_events WHERE categories IS NOT NULL",
+      )
+      .all() as { categories: string }[]
+    const update = this.db.prepare(
+      "UPDATE display_events SET category = ? WHERE categories = ?",
+    )
+    for (const row of rows) {
+      update.run(this.extractCategory(row.categories), row.categories)
     }
   }
 
@@ -243,6 +403,12 @@ export class EventDatabase {
 
     const normalizedEvent = {
       ...event,
+      // Decode HTML entities once at store time; the API serves these
+      // fields verbatim. (categories JSON stays raw — the display category
+      // is decoded when display_events.category is populated.)
+      title: decodeHtmlEntities(event.title),
+      location: event.location ? decodeHtmlEntities(event.location) : event.location,
+      city: event.city ? decodeHtmlEntities(event.city) : event.city,
       date: this.normalizeDate(event.date),
       startTime: this.normalizeTime(event.startTime),
       startDate: this.normalizeDate(event.startDate),
@@ -300,6 +466,115 @@ export class EventDatabase {
         updatedAt = CURRENT_TIMESTAMP
     `)
     stmt.run(source, date)
+  }
+
+  recordSourceRun(run: SourceRunRecord): void {
+    this.db
+      .prepare(
+        `
+      INSERT INTO source_runs (source, runType, status, eventCount, durationMs, errorMessage)
+      VALUES (@source, @runType, @status, @eventCount, @durationMs, @errorMessage)
+    `,
+      )
+      .run(run)
+    this.pruneSourceRuns()
+  }
+
+  /** Keep only the most recent N runs per source. */
+  pruneSourceRuns(keepPerSource: number = 60): void {
+    this.db
+      .prepare(
+        `
+      DELETE FROM source_runs WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY source ORDER BY id DESC) AS rn
+          FROM source_runs
+        ) WHERE rn > ?
+      )
+    `,
+      )
+      .run(keepPerSource)
+  }
+
+  /**
+   * Per-source health derived from source_runs. A source is flagged when its
+   * last completed (non-skipped) run errored, when it has failed twice in a
+   * row, or when it returned 0 events despite returning some within the last
+   * 30 days (the silent-relay-death signature). Sources with no recorded
+   * runs yet are reported but not flagged.
+   */
+  getSourceHealth(expectedSources: string[] = []): SourceHealth[] {
+    const rows = this.db
+      .prepare("SELECT * FROM source_runs ORDER BY id DESC")
+      .all() as (SourceRunRecord & { id: number; runAt: string })[]
+
+    const bySource = new Map<string, (SourceRunRecord & { runAt: string })[]>()
+    for (const row of rows) {
+      const list = bySource.get(row.source) || []
+      list.push(row)
+      bySource.set(row.source, list)
+    }
+    for (const source of expectedSources) {
+      if (!bySource.has(source)) {
+        bySource.set(source, [])
+      }
+    }
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    const isRecent = (runAt: string) => {
+      const parsed = new Date(runAt.replace(" ", "T") + "Z")
+      return !Number.isNaN(parsed.getTime()) && parsed.getTime() >= thirtyDaysAgo
+    }
+
+    const health: SourceHealth[] = []
+    for (const [source, runs] of bySource) {
+      // Newest first; skipped runs are cache hits, not health signals.
+      const completed = runs.filter((r) => r.status !== "skipped")
+      const last = completed[0] ?? null
+      const lastSuccess = completed.find((r) => r.status === "ok") ?? null
+      const lastError = completed.find((r) => r.status === "error") ?? null
+
+      let consecutiveFailures = 0
+      for (const run of completed) {
+        if (run.status !== "error") break
+        consecutiveFailures++
+      }
+
+      const flagReasons: string[] = []
+      if (last?.status === "error") {
+        flagReasons.push("last run failed")
+      }
+      if (consecutiveFailures >= 2) {
+        flagReasons.push(`${consecutiveFailures} consecutive failures`)
+      }
+      if (
+        last?.status === "ok" &&
+        last.eventCount === 0 &&
+        completed.some(
+          (r) =>
+            r.status === "ok" &&
+            (r.eventCount ?? 0) > 0 &&
+            isRecent(r.runAt),
+        )
+      ) {
+        flagReasons.push("returned 0 events (recently returned more)")
+      }
+
+      health.push({
+        source,
+        lastRunAt: runs[0]?.runAt ?? null,
+        lastStatus: last?.status ?? null,
+        lastEventCount: last?.eventCount ?? null,
+        lastSuccessAt: lastSuccess?.runAt ?? null,
+        lastErrorMessage: lastError?.errorMessage ?? null,
+        consecutiveFailures,
+        flagged: flagReasons.length > 0,
+        flagReasons,
+      })
+    }
+
+    health.sort((a, b) => a.source.localeCompare(b.source))
+    return health
   }
 
   getEventIdsBySource(source: string): Set<string> {
@@ -472,40 +747,56 @@ export class EventDatabase {
   }
 
   rebuildDisplayEvents(): number {
-    const deduplicatedEvents = this.getDeduplicatedEvents(
-      this.getTotalCount(),
-      0,
-    )
+    const todayInFargo = this.getCurrentDateInTimeZone(this.displayTimeZone)
 
-    const deleteStmt = this.db.prepare("DELETE FROM display_events")
-    const insertStmt = this.db.prepare(`
-      INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude)
-      VALUES (@eventId, @title, @url, @altUrl, @location, @date, @startTime, @city, @imageUrl, @categories, @source, @latitude, @longitude)
-    `)
-
+    // Single SQL pass replacing the old load-everything-into-JS rebuild.
+    // Semantics match getDeduplicatedEvents(): drop rows that appear as
+    // eventId1 (the dropped side) of a high/medium match; surface the
+    // dropped row's URL as altUrl only for cross-source matches. Past
+    // events are excluded — the query layer already clamps to today, so
+    // they were dead rows.
     const transaction = this.db.transaction(() => {
-      deleteStmt.run()
-      for (const event of deduplicatedEvents) {
-        insertStmt.run({
-          eventId: event.eventId,
-          title: event.title,
-          url: event.url,
-          altUrl: event.altUrl || null,
-          location: event.location,
-          date: event.date,
-          startTime: event.startTime,
-          city: event.city,
-          imageUrl: event.imageUrl,
-          categories: event.categories,
-          source: event.source,
-          latitude: event.latitude ?? null,
-          longitude: event.longitude ?? null,
-        })
-      }
+      this.db.prepare("DELETE FROM display_events").run()
+      const result = this.db
+        .prepare(
+          `
+        INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude)
+        SELECT
+          e.eventId,
+          e.title,
+          e.url,
+          (
+            SELECT e1.url
+            FROM event_matches m
+            JOIN events e1 ON e1.eventId = m.eventId1
+            WHERE m.eventId2 = e.eventId
+              AND m.confidence IN ('high', 'medium')
+              AND e1.source <> e.source
+            ORDER BY m.score DESC, m.id DESC
+            LIMIT 1
+          ),
+          e.location,
+          e.date,
+          e.startTime,
+          e.city,
+          e.imageUrl,
+          e.categories,
+          e.source,
+          e.latitude,
+          e.longitude
+        FROM events e
+        WHERE e.date >= @today
+          AND e.eventId NOT IN (
+            SELECT eventId1 FROM event_matches WHERE confidence IN ('high', 'medium')
+          )
+      `,
+        )
+        .run({ today: todayInFargo })
+      this.populateDisplayCategories()
+      return result.changes
     })
 
-    transaction()
-    return deduplicatedEvents.length
+    return transaction()
   }
 
   getDisplayEvents(

@@ -438,6 +438,30 @@
         top: 0;
         z-index: 2;
       }
+      .error-row td {
+        text-align: center;
+        padding: 32px 16px;
+        color: var(--muted);
+      }
+      .error-row .error-message {
+        margin-bottom: 12px;
+      }
+      /* Map marker clusters: the bundled MarkerCluster.Default.css colors
+         are hardcoded light greens; restyle with theme variables so
+         clusters follow light/dark mode. The .leaflet-container prefix
+         outranks the bundled rules (which load after this inline block). */
+      .leaflet-container .marker-cluster-small,
+      .leaflet-container .marker-cluster-medium,
+      .leaflet-container .marker-cluster-large {
+        background-color: var(--accent-soft-bg);
+      }
+      .leaflet-container .marker-cluster-small div,
+      .leaflet-container .marker-cluster-medium div,
+      .leaflet-container .marker-cluster-large div {
+        background-color: var(--surface-accent);
+        color: var(--text);
+        font-weight: 600;
+      }
       /* Venue groups: header + (optionally) children render as a single
          bordered "card-in-card" container on desktop. Header and children
          use distinct tints so the container reads as a contained group,
@@ -934,6 +958,17 @@
           position: static;
         }
         tbody tr.day-marker td::before {
+          content: none;
+        }
+        tbody tr.error-row {
+          border: 0;
+          background: transparent;
+        }
+        tbody tr.error-row td {
+          display: block;
+          position: static;
+        }
+        tbody tr.error-row td::before {
           content: none;
         }
         /* Mobile: the entire venue group renders as one tall card. The

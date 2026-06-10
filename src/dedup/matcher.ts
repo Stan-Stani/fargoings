@@ -206,6 +206,43 @@ export function scoreMatch(
 }
 
 /**
+ * Canonicalize a URL for identity comparison: lowercase host, drop the
+ * fragment, strip a trailing slash. The querystring is KEPT — several
+ * sources key events entirely by query params (Sidearm's
+ * calendar.aspx?game_id=…, CivicPlus event-detail?id=…), so dropping it
+ * would merge unrelated events. Reposts after a delete reuse the full URL
+ * with a fresh upstream id, so exact-URL identity is still the most
+ * reliable same-source duplicate signal.
+ */
+function normalizeUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl)
+    const path = url.pathname.replace(/\/+$/, '')
+    return `${url.hostname.toLowerCase()}${path}${url.search}`
+  } catch {
+    return rawUrl.trim().toLowerCase().replace(/\/+$/, '')
+  }
+}
+
+/** Minutes since midnight for an "HH:MM[:SS]" time, or null if unparseable. */
+function timeToMinutes(time: string): number | null {
+  const match = time.match(/^(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+export interface SelfMatchOptions {
+  minScore?: number
+  /**
+   * Only match on identical URLs, skipping fuzzy scoring entirely. Used for
+   * sports schedules where upstream ids are reliable and near-identical
+   * legitimate events are common (doubleheaders share title/venue and often
+   * a listed time, so fuzzy scoring can't tell them from reposts).
+   */
+  urlOnly?: boolean
+}
+
+/**
  * Find duplicates within a single source (same poster reposting after a delete,
  * upstream returning the same event twice with different ids, etc.).
  *
@@ -218,8 +255,10 @@ export function scoreMatch(
  */
 export function findSelfMatches(
   events: StoredEvent[],
-  minScore: number = 0.85
+  options: SelfMatchOptions = {}
 ): MatchScore[] {
+  const { minScore = 0.85, urlOnly = false } = options
+
   const byDate = new Map<string, StoredEvent[]>()
   for (const event of events) {
     const existing = byDate.get(event.date) || []
@@ -236,6 +275,45 @@ export function findSelfMatches(
         if (a.eventId === b.eventId) continue
 
         const [older, newer] = a.id < b.id ? [a, b] : [b, a]
+
+        // Identical URL on the same date is a duplicate regardless of how
+        // the titles drifted — the upstream id churned but the slug didn't.
+        if (
+          older.url &&
+          newer.url &&
+          normalizeUrl(older.url) === normalizeUrl(newer.url)
+        ) {
+          matches.push({
+            eventId1: older.eventId,
+            eventId2: newer.eventId,
+            titleScore: 1,
+            venueScore: 1,
+            timeScore: 1,
+            geoScore: 1,
+            totalScore: 1,
+            confidence: 'high',
+            reasons: ['identical url (same-source repost)'],
+          })
+          continue
+        }
+
+        if (urlOnly) continue
+
+        // Distinct start times >30 min apart mean distinct events (back-to-
+        // back sessions, recurring slots), never a repost — skip before
+        // scoring so near-identical titles can't merge them.
+        if (older.startTime && newer.startTime) {
+          const minutes1 = timeToMinutes(older.startTime)
+          const minutes2 = timeToMinutes(newer.startTime)
+          if (
+            minutes1 !== null &&
+            minutes2 !== null &&
+            Math.abs(minutes1 - minutes2) > 30
+          ) {
+            continue
+          }
+        }
+
         const score = scoreMatch(older, newer)
 
         if (score.totalScore >= minScore) {

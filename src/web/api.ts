@@ -2,7 +2,7 @@ import "dotenv/config"
 import { createServer } from "http"
 import { URL } from "url"
 import { EventDatabase } from "../db/database"
-import { decodeHtmlEntities } from "../dedup/normalize"
+import { ALL_SOURCE_IDS } from "../fetchers/sources"
 
 const PORT = Number(process.env.API_PORT || 8788)
 
@@ -81,38 +81,29 @@ function sendJson(
   res.end(JSON.stringify(payload))
 }
 
-function extractCategory(categoriesRaw: string | null): string | null {
-  if (!categoriesRaw) {
-    return null
+interface EventFilters {
+  query: string
+  category: string
+  sortDir: "asc" | "desc"
+  dateFrom: string
+  dateTo: string
+  includeSports: boolean
+}
+
+function parseEventFilters(searchParams: URLSearchParams): EventFilters {
+  const preset = searchParams.get("preset") || ""
+  const rawFrom = searchParams.get("dateFrom") || ""
+  const rawTo = searchParams.get("dateTo") || ""
+  const { dateFrom, dateTo } = resolveDateRange(preset, rawFrom, rawTo)
+
+  return {
+    query: searchParams.get("q") || "",
+    category: searchParams.get("category") || "",
+    sortDir: searchParams.get("sort") === "desc" ? "desc" : "asc",
+    dateFrom,
+    dateTo,
+    includeSports: searchParams.get("sports") === "show",
   }
-
-  try {
-    const parsed = JSON.parse(categoriesRaw) as unknown
-
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const first = parsed[0]
-
-      if (typeof first === "string") {
-        return decodeHtmlEntities(first)
-      }
-
-      if (first && typeof first === "object") {
-        const record = first as Record<string, unknown>
-
-        if (typeof record.catName === "string") {
-          return decodeHtmlEntities(record.catName)
-        }
-
-        if (typeof record.name === "string") {
-          return decodeHtmlEntities(record.name)
-        }
-      }
-    }
-  } catch {
-    return decodeHtmlEntities(categoriesRaw)
-  }
-
-  return null
 }
 
 async function main() {
@@ -132,48 +123,50 @@ async function main() {
       return
     }
 
+    if (pathname === "/api/health/sources") {
+      // Always HTTP 200 with an `ok` boolean — external monitors keyword-
+      // match on `"ok":true`; /health stays the pure liveness probe.
+      const sources = db.getSourceHealth(ALL_SOURCE_IDS)
+      sendJson(res, 200, {
+        ok: sources.every((s) => !s.flagged),
+        sources,
+      })
+      return
+    }
+
     if (pathname === "/api/categories") {
       sendJson(res, 200, { categories: db.getDistinctCategories() })
       return
     }
 
     if (pathname === "/api/events") {
-      const query = requestUrl.searchParams.get("q") || ""
-      const category = requestUrl.searchParams.get("category") || ""
+      const filters = parseEventFilters(requestUrl.searchParams)
       const page = toPositiveInt(requestUrl.searchParams.get("page"), 1)
       const pageSize = Math.min(
         100,
         Math.max(1, toPositiveInt(requestUrl.searchParams.get("pageSize"), 25)),
       )
       const offset = (page - 1) * pageSize
-      const sortDir =
-        requestUrl.searchParams.get("sort") === "desc" ? "desc" : "asc"
-
-      const preset = requestUrl.searchParams.get("preset") || ""
-      const rawFrom = requestUrl.searchParams.get("dateFrom") || ""
-      const rawTo = requestUrl.searchParams.get("dateTo") || ""
-      const { dateFrom, dateTo } = resolveDateRange(preset, rawFrom, rawTo)
-      const includeSports =
-        requestUrl.searchParams.get("sports") === "show"
 
       const result = db.queryDisplayEvents(
-        query,
+        filters.query,
         pageSize,
         offset,
-        sortDir,
-        category,
-        dateFrom,
-        dateTo,
-        includeSports,
+        filters.sortDir,
+        filters.category,
+        filters.dateFrom,
+        filters.dateTo,
+        filters.includeSports,
       )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
       sendJson(res, 200, {
         items: result.rows.map((row) => ({
           ...row,
-          title: decodeHtmlEntities(row.title),
-          location: row.location ? decodeHtmlEntities(row.location) : null,
-          categories: extractCategory(row.categories),
+          // title/location are decoded at store time; category is
+          // precomputed at rebuild time (response key stays `categories`
+          // for the frontend).
+          categories: row.category ?? null,
           latitude: row.latitude ?? null,
           longitude: row.longitude ?? null,
         })),
@@ -181,6 +174,54 @@ async function main() {
         page,
         pageSize,
         totalPages,
+      })
+      return
+    }
+
+    if (pathname === "/api/events/map") {
+      // Map view needs every matching event (not a page) but only the
+      // fields a marker uses. Capped as a safety valve; display_events
+      // only holds future deduped events.
+      const filters = parseEventFilters(requestUrl.searchParams)
+      const result = db.queryDisplayEvents(
+        filters.query,
+        1000,
+        0,
+        filters.sortDir,
+        filters.category,
+        filters.dateFrom,
+        filters.dateTo,
+        filters.includeSports,
+      )
+
+      // Coordinates far outside the Fargo–Moorhead region are upstream
+      // geocoding junk (e.g. virtual events pinned to the US centroid);
+      // treat them as unmappable so they can't blow up the map bounds.
+      const inRegion = (lat: number, lng: number) =>
+        lat > 45.5 && lat < 48 && lng > -98.5 && lng < -95
+
+      const items = result.rows.map((row) => {
+        const hasCoords =
+          row.latitude != null &&
+          row.longitude != null &&
+          inRegion(row.latitude, row.longitude)
+        return {
+          title: row.title,
+          date: row.date,
+          startTime: row.startTime,
+          location: row.location,
+          url: row.url,
+          latitude: hasCoords ? row.latitude : null,
+          longitude: hasCoords ? row.longitude : null,
+        }
+      })
+
+      sendJson(res, 200, {
+        items,
+        total: result.total,
+        mappable: items.filter(
+          (item) => item.latitude != null && item.longitude != null,
+        ).length,
       })
       return
     }

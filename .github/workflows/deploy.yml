@@ -53,6 +53,17 @@ jobs:
             done
             curl -fsS http://127.0.0.1:8788/health
 
+            # Smoke-test: the API must serve actual event data (catches a
+            # lost/empty DB, not just a live process). No freshness check —
+            # deploys can land days after the weekly fetch.
+            curl -fsS 'http://127.0.0.1:8788/api/events?pageSize=1' \
+              | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const j=JSON.parse(d);if(!Number.isInteger(j.total)||j.total<1){console.error("SMOKE FAIL: no events, total="+j.total);process.exit(1)}console.log("SMOKE OK: total="+j.total)})'
+
+            # Informational only: per-source health (a flagged upstream
+            # source must not fail a deploy).
+            curl -fsS http://127.0.0.1:8788/api/health/sources || true
+            echo ""
+
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then
                 break

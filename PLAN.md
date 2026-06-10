@@ -1,8 +1,18 @@
 # Implementation Plan
 
-_Last refreshed: 2026-05-14. Current version: v1.1.9._
+_Last refreshed: 2026-06-09. Current version: v1.1.34._
 
 ## Shipped
+
+- **Reliability/perf round (2026-06-09):**
+  - **Fetcher registry** — `src/fetchers/sources.ts` (pure data: ids, aliases, sports flag, dedup priority) + `src/fetchers/registry.ts` (fetch closures, shared `runSource`, generated dedup pairs). `index.ts`, `refetch.ts`, and `dedup.ts` all iterate it; the old "update two files in sync" failure mode is gone. Cross-source pairs are now generated for ALL non-sports pairs (a few previously-missing pairs like downtownfargo×fargolibrary are now covered).
+  - **Per-source health** — every run records to `source_runs`; `GET /api/health/sources` returns per-source status with an `ok` boolean (point an uptime monitor at it, keyword `"ok":true`). `npm start` prints `HEALTH SUMMARY:` and exits 1 when a source is flagged (last run failed, ≥2 consecutive failures, or 0 events after recently returning more) — the silent WFPL/LARL relay-death scenario now alerts via cron mail + the endpoint.
+  - **DB** — `PRAGMA user_version` migrations; WAL + busy_timeout; `rebuildDisplayEvents()` is one SQL `INSERT…SELECT` (was a full-table JS pass) and only keeps today-or-future rows; `display_events.category` precomputed at rebuild (API no longer JSON-parses/decodes per request); HTML entities decoded once at store time (one-time migration decoded existing rows).
+  - **Item A (map loads all matching events)** — dedicated slim `GET /api/events/map` (cap 1000, marker fields only, out-of-region junk coords nulled); map view fetches it separately from list pagination; meta shows "N markers (M without coordinates)".
+  - **Item B (marker clustering)** — leaflet.markercluster (`maxClusterRadius: 40`, spiderfy at max zoom), cluster colors restyled via theme variables.
+  - **Item E hardening** — same-source matcher: identical-URL fast path (querystring KEPT — Sidearm/CivicPlus key events by query params), >30-min time-difference guard before fuzzy scoring, and sports sources are URL-identity-only (fixes the "doubleheaders self-dedupe" known minor; fuzzy can't tell a doubleheader from a repost).
+  - **Frontend error state** — failed loads render an error row + Retry (15s fetch timeout); failed "Load more" keeps existing rows.
+  - **Deploy smoke test** — deploy now fails if `/api/events` serves zero events (lost/empty DB), and prints `/api/health/sources` informationally.
 
 - **#1 Sort by Time (within day)** — `▲/▼` indicator in the Date header, clickable to toggle `asc/desc`. API param `sort=desc`. Orthogonal category sort kept. (`src/web/main.ts`, `src/web/api.ts`, `src/db/database.ts`)
 - **#2 Date Range Selectors** — Presets `today | weekend | week | all` wired via `preset=` query param and `resolveDateRange()` in `src/web/api.ts`. Active button highlighted via `aria-pressed`.
@@ -15,24 +25,13 @@ _Last refreshed: 2026-05-14. Current version: v1.1.9._
 
 ## Open
 
-### A. Map view: load all matching events, not just the loaded page
+### A. ~~Map view: load all matching events~~ — SHIPPED 2026-06-09
 
-**Problem:** `renderMap(currentItems)` only shows whatever the list has paged in (default `pageSize=50`). Open the map and you see at most 50 markers regardless of how many events match the current filters. PLAN.md originally specified "loads all matching events (not paginated) up to reasonable limit (e.g., 500)" — never implemented.
+Dedicated `GET /api/events/map` (slim marker fields, cap 1000) fetched separately from list pagination; invalidated on filter changes. Meta line shows "N markers (M events without coordinates)". Out-of-region coordinates (e.g. virtual events upstream-geocoded to the US centroid in Colorado) are treated as unmappable so they can't blow up the map bounds.
 
-**Plan:**
-- Add `unpaginated=1` (or `pageSize=500`) fetch in `setViewMode("map")` that requests up to 500 matching events with current filters
-- API: bump the `pageSize` cap from 100 to 500 _only_ when the request opts in (avoid changing list defaults)
-- Store the map result separately from `currentItems` so paging the list back in `list` mode isn't disrupted
-- Show "Showing N markers (M events have no coordinates)" in the map's meta area
+### B. ~~Map view: marker clustering~~ — SHIPPED 2026-06-09
 
-### B. Map view: marker clustering
-
-**Problem:** Dense days (Paradox alone often has 3–4 events) stack markers exactly on top of each other — only one is clickable.
-
-**Plan:**
-- `npm install leaflet.markercluster @types/leaflet.markercluster`
-- Replace the bare `L.layerGroup()` with `L.markerClusterGroup()`
-- Tune `maxClusterRadius` (start at 40px) and enable `spiderfyOnMaxZoom` so co-located venues fan out at max zoom
+`L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true })`; cluster icons restyled with the theme CSS variables (the `.leaflet-container` prefix outranks the bundled default CSS, which loads after the inline block).
 
 ### C. Library Events: Moorhead and West Fargo
 
@@ -73,11 +72,11 @@ For (1) — exact-URL repeats: **SHIPPED locally; needs deploy + one-time refetc
 - Verified locally with `npm start`: zero `(source, url, date, startTime)` groups with >1 row in fargomoorhead.org events. Vista and Book Sale each collapse to a single row.
 - **Deploy step:** after the new code lands on the VPS, run `npm run refetch -- --source fargomoorhead.org` once. Existing prod rows still carry the old volatile `_id`-based eventIds; without the refetch they'd linger as orphans alongside the new synthetic-ID rows.
 
-For (2) — same-source near-dups:
-- Add same-source passes to the dedup loop: `findMatches(undergroundStored, undergroundStored, 0.85)` and likewise for each source.
-- Skip self-pairs in `findMatches` (`if event1.eventId === event2.eventId continue`) and skip already-compared pairs (use a `Set<string>` keyed on `min(id1,id2)|max(id1,id2)`).
-- Use a **tighter threshold** for same-source (0.85+ vs. cross-source 0.65). Same venue + same time + same source is common for genuinely distinct events (Paradox runs Magic Modern + Magic Draft + Magic Commander simultaneously, all at 6:15 PM, all at Paradox), so title similarity needs to dominate.
-- When matched, keep the row with the more recent `updatedAt` (or higher event ID — assumes monotonic), drop the older. Record the merge in `matches` for audit.
+For (2) — same-source near-dups: **SHIPPED** (`findSelfMatches` at 0.85, wired for all sources), **hardened 2026-06-09**:
+- Identical-URL fast path: same normalized URL (host lowercased, fragment/trailing-slash stripped, **querystring kept** — Sidearm `calendar.aspx?game_id=…` and CivicPlus `event-detail?id=…` key events entirely by query params; stripping it merged Women's Golf with Softball) ⇒ high-confidence match regardless of title drift.
+- Time guard: both events having start times >30 min apart ⇒ never a repost, skip before fuzzy scoring.
+- Sports sources are URL-identity-only (no fuzzy pass) — fixes the "same-day doubleheaders self-dedupe" known minor; a doubleheader and a repost are indistinguishable to fuzzy scoring (near-identical title/venue/time).
+- Fuzzy threshold stays at 0.85; revisit 0.80 only after observing prod (false merges are worse than residual dupes).
 
 ### F. ~~Collapse same-venue events into a single row~~ — SHIPPED 2026-05-14
 
@@ -122,8 +121,10 @@ blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
 - ❌ **Dropped:** Sanctuary Events Center (wedding/corporate venue — no
   public event feed) and Fargo Brewing (business closing; site expired).
 
-Per `AGENTS.md`: every new fetcher touches `index.ts` _and_ `refetch.ts`
-(+ dedup pairs, alias, optional venue enrichment & coords for the map).
+Per `AGENTS.md`: a new fetcher is one entry in `src/fetchers/sources.ts` +
+one fetch closure in `src/fetchers/registry.ts` (dedup pairs, aliases, and
+the index/refetch wiring are generated from the registry). Optional: venue
+enrichment & coords for the map.
 
 ### Phase 2 — Discovery / SEO
 
@@ -140,14 +141,15 @@ post from the weekly cron.
 
 ### Phase 4 — Reliability / health
 
-Per-source health: row count + last-success per fetcher; alert when a
-source errors or returns 0 (the West Fargo / LARL blocks failed silently —
-that must page us, not rot). Parser regression tests so upstream HTML/JSON
-shape changes are caught before a deploy.
+✅ **Per-source health SHIPPED 2026-06-09**: `source_runs` table,
+`/api/health/sources` (`ok` boolean for keyword monitors), `HEALTH SUMMARY`
++ nonzero exit from the weekly cron when a source is flagged. **Remaining
+action:** point an external uptime monitor (e.g. UptimeRobot keyword match
+on `"ok":true`) at `https://fargoings.com/api/health/sources`.
+Still open: parser regression tests so upstream HTML/JSON shape changes are
+caught before a deploy.
 
 ### Backlog (unscheduled)
 
-- **A — map loads all matching events** (currently only the loaded page).
-- **B — map marker clustering** (follows A).
 - **D — Google Reviews** on venue links — needs the Places API-key decision;
   fold into the Phase 1 Ticketmaster "enable a paid/keyed API?" call.

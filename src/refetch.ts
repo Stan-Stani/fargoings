@@ -1,69 +1,23 @@
 import "dotenv/config"
 import { EventDatabase } from "./db/database"
-import { findMatches, findSelfMatches } from "./dedup/matcher"
-import { DowntownFargoFetcher } from "./fetchers/downtownfargo-com"
-import { FargoLibraryFetcher } from "./fetchers/fargolibrary-org"
-import { FargoFetcher } from "./fetchers/fargomoorhead-com"
-import { FargoUndergroundFetcher } from "./fetchers/fargounderground-com"
-import { DrekkerBrewingFetcher } from "./fetchers/drekkerbrewing-com"
-import { SidearmSportsFetcher } from "./fetchers/sidearm-sports"
-import { MoorheadLibraryFetcher } from "./fetchers/moorheadlibrary-org"
-import { WestFargoEventsFetcher } from "./fetchers/westfargoevents-com"
-import { WestFargoLibraryFetcher } from "./fetchers/westfargolibrary-org"
-import { logError } from "./log"
+import {
+  buildAllMatches,
+  persistMatches,
+  runSource,
+  SOURCES,
+} from "./fetchers/registry"
 
-type SourceId =
-  | "fargomoorhead.org"
-  | "fargounderground.com"
-  | "downtownfargo.com"
-  | "westfargoevents.com"
-  | "fargolibrary.org"
-  | "westfargolibrary.org"
-  | "larl.org"
-  | "drekkerbrewing.com"
-  | "gobison.com"
-  | "msumdragons.com"
+const ALL_SOURCES = SOURCES.map((def) => def.source)
 
-const ALL_SOURCES: SourceId[] = [
-  "fargomoorhead.org",
-  "fargounderground.com",
-  "downtownfargo.com",
-  "westfargoevents.com",
-  "fargolibrary.org",
-  "westfargolibrary.org",
-  "larl.org",
-  "drekkerbrewing.com",
-  "gobison.com",
-  "msumdragons.com",
-]
-
-const SOURCE_ALIASES: Record<string, SourceId> = {
-  fargo: "fargomoorhead.org",
-  fargomoorhead: "fargomoorhead.org",
-  underground: "fargounderground.com",
-  fargounderground: "fargounderground.com",
-  downtown: "downtownfargo.com",
-  westfargo: "westfargoevents.com",
-  library: "fargolibrary.org",
-  fargolibrary: "fargolibrary.org",
-  westfargolibrary: "westfargolibrary.org",
-  wfpl: "westfargolibrary.org",
-  moorhead: "larl.org",
-  moorheadlibrary: "larl.org",
-  mph: "larl.org",
-  larl: "larl.org",
-  drekker: "drekkerbrewing.com",
-  drekkerbrewing: "drekkerbrewing.com",
-  ndsu: "gobison.com",
-  bison: "gobison.com",
-  gobison: "gobison.com",
-  msum: "msumdragons.com",
-  dragons: "msumdragons.com",
-  msumdragons: "msumdragons.com",
+const SOURCE_ALIASES: Record<string, string> = {}
+for (const def of SOURCES) {
+  for (const alias of def.aliases) {
+    SOURCE_ALIASES[alias] = def.source
+  }
 }
 
-function parseSelectedSources(argv: string[]): Set<SourceId> {
-  const selected = new Set<SourceId>()
+function parseSelectedSources(argv: string[]): Set<string> {
+  const selected = new Set<string>()
 
   const takeValues = (value: string) => {
     for (const raw of value
@@ -72,8 +26,8 @@ function parseSelectedSources(argv: string[]): Set<SourceId> {
       .filter(Boolean)) {
       const normalized = raw.toLowerCase()
       const mapped =
-        (SOURCE_ALIASES[normalized] as SourceId | undefined) ??
-        (ALL_SOURCES.includes(raw as SourceId) ? (raw as SourceId) : undefined)
+        SOURCE_ALIASES[normalized] ??
+        (ALL_SOURCES.includes(raw) ? raw : undefined)
 
       if (!mapped) {
         throw new Error(
@@ -136,233 +90,12 @@ async function main() {
   try {
     const today = getLocalDateString(new Date())
 
-    // Clear all events and matches
-    db.clearMatches()
-    console.log("   Cleared existing matches\n")
-
-    // Fetch fargomoorhead.org
-    if (selectedSources.has("fargomoorhead.org")) {
-      console.log("📥 Fetching fargomoorhead.org...")
-      try {
-        const fargoFetcher = new FargoFetcher()
-        const fargoEvents = await fargoFetcher.fetchEvents()
-        db.deleteEventsBySource("fargomoorhead.org")
-        for (const event of fargoEvents) {
-          db.insertEvent(fargoFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("fargomoorhead.org", today)
-        console.log(`✓ Stored ${fargoEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ fargomoorhead.org refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing fargomoorhead.org events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping fargomoorhead.org\n")
-    }
-
-    // Fetch fargounderground.com
-    if (selectedSources.has("fargounderground.com")) {
-      console.log("📥 Fetching fargounderground.com...")
-      try {
-        const undergroundFetcher = new FargoUndergroundFetcher()
-        const undergroundEvents = await undergroundFetcher.fetchEvents()
-        db.deleteEventsBySource("fargounderground.com")
-        for (const event of undergroundEvents) {
-          db.insertEvent(undergroundFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("fargounderground.com", today)
-        console.log(`✓ Stored ${undergroundEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ fargounderground.com refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing fargounderground.com events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping fargounderground.com\n")
-    }
-
-    // Fetch downtownfargo.com
-    if (selectedSources.has("downtownfargo.com")) {
-      console.log("📥 Fetching downtownfargo.com...")
-      try {
-        const downtownFetcher = new DowntownFargoFetcher()
-        const downtownEvents = await downtownFetcher.fetchEvents(14)
-        db.deleteEventsBySource("downtownfargo.com")
-        for (const event of downtownEvents) {
-          db.insertEvent(downtownFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("downtownfargo.com", today)
-        console.log(`✓ Stored ${downtownEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ downtownfargo.com refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing downtownfargo.com events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping downtownfargo.com\n")
-    }
-
-    // Fetch westfargoevents.com
-    if (selectedSources.has("westfargoevents.com")) {
-      console.log("📥 Fetching westfargoevents.com...")
-      try {
-        const westFargoFetcher = new WestFargoEventsFetcher()
-        const westFargoEvents = await westFargoFetcher.fetchEvents()
-        db.deleteEventsBySource("westfargoevents.com")
-        for (const event of westFargoEvents) {
-          db.insertEvent(westFargoFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("westfargoevents.com", today)
-        console.log(`✓ Stored ${westFargoEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ westfargoevents.com refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing westfargoevents.com events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping westfargoevents.com\n")
-    }
-
-    // Fetch fargolibrary.org (non-fatal if it 504s)
-    if (selectedSources.has("fargolibrary.org")) {
-      console.log("📥 Fetching fargolibrary.org...")
-      try {
-        const fargoLibraryFetcher = new FargoLibraryFetcher()
-        const fargoLibraryEvents = await fargoLibraryFetcher.fetchEvents()
-        db.deleteEventsBySource("fargolibrary.org")
-        for (const event of fargoLibraryEvents) {
-          db.insertEvent(fargoLibraryFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("fargolibrary.org", today)
-        console.log(`✓ Stored ${fargoLibraryEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ fargolibrary.org refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing fargolibrary.org events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping fargolibrary.org\n")
-    }
-
-    // Fetch westfargolibrary.org
-    if (selectedSources.has("westfargolibrary.org")) {
-      console.log("📥 Fetching westfargolibrary.org...")
-      try {
-        const westFargoLibraryFetcher = new WestFargoLibraryFetcher()
-        const westFargoLibraryEvents =
-          await westFargoLibraryFetcher.fetchEvents()
-        db.deleteEventsBySource("westfargolibrary.org")
-        for (const event of westFargoLibraryEvents) {
-          db.insertEvent(westFargoLibraryFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("westfargolibrary.org", today)
-        console.log(`✓ Stored ${westFargoLibraryEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ westfargolibrary.org refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing westfargolibrary.org events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping westfargolibrary.org\n")
-    }
-
-    // Fetch larl.org
-    if (selectedSources.has("larl.org")) {
-      console.log("📥 Fetching larl.org...")
-      try {
-        const moorheadLibraryFetcher = new MoorheadLibraryFetcher()
-        const moorheadLibraryEvents =
-          await moorheadLibraryFetcher.fetchEvents()
-        db.deleteEventsBySource("larl.org")
-        for (const event of moorheadLibraryEvents) {
-          db.insertEvent(moorheadLibraryFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("larl.org", today)
-        console.log(`✓ Stored ${moorheadLibraryEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ larl.org refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing larl.org events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping larl.org\n")
-    }
-
-    // Fetch drekkerbrewing.com
-    if (selectedSources.has("drekkerbrewing.com")) {
-      console.log("📥 Fetching drekkerbrewing.com...")
-      try {
-        const drekkerFetcher = new DrekkerBrewingFetcher()
-        const drekkerEvents = await drekkerFetcher.fetchEvents()
-        db.deleteEventsBySource("drekkerbrewing.com")
-        for (const event of drekkerEvents) {
-          db.insertEvent(drekkerFetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate("drekkerbrewing.com", today)
-        console.log(`✓ Stored ${drekkerEvents.length} events\n`)
-      } catch (error) {
-        logError("❌ drekkerbrewing.com refetch failed:", error)
-        console.log(
-          "⚠️  Keeping existing drekkerbrewing.com events (no delete performed).\n",
-        )
-      }
-    } else {
-      console.log("⏭️  Skipping drekkerbrewing.com\n")
-    }
-
-    // Fetch college athletics (Sidearm) — gobison.com, msumdragons.com
-    const sportsConfigs: {
-      source: SourceId
-      cfg: ConstructorParameters<typeof SidearmSportsFetcher>[0]
-    }[] = [
-      {
-        source: "gobison.com",
-        cfg: {
-          baseUrl: "https://gobison.com",
-          schoolName: "NDSU Athletics",
-          sourceId: "gobison.com",
-          city: "Fargo",
-        },
-      },
-      {
-        source: "msumdragons.com",
-        cfg: {
-          baseUrl: "https://www.msumdragons.com",
-          schoolName: "MSUM Athletics",
-          sourceId: "msumdragons.com",
-          city: "Moorhead",
-        },
-      },
-    ]
-    for (const { source, cfg } of sportsConfigs) {
-      if (!selectedSources.has(source)) {
-        console.log(`⏭️  Skipping ${source}\n`)
+    for (const def of SOURCES) {
+      if (!selectedSources.has(def.source)) {
+        console.log(`⏭️  Skipping ${def.source}\n`)
         continue
       }
-      console.log(`📥 Fetching ${source}...`)
-      try {
-        const fetcher = new SidearmSportsFetcher(cfg)
-        const events = await fetcher.fetchEvents()
-        db.deleteEventsBySource(source)
-        for (const event of events) {
-          db.insertEvent(fetcher.transformToStoredEvent(event))
-        }
-        db.setSourceLastUpdatedDate(source, today)
-        console.log(`✓ Stored ${events.length} events\n`)
-      } catch (error) {
-        logError(`❌ ${source} refetch failed:`, error)
-        console.log(
-          `⚠️  Keeping existing ${source} events (no delete performed).\n`,
-        )
-      }
+      await runSource(db, def, { force: true, today })
     }
 
     // Enrich events with known venue locations where data is missing
@@ -375,65 +108,8 @@ async function main() {
 
     // Rebuild dedup matches across all source pairs
     console.log("🔍 Rebuilding duplicate matches...")
-    const fargoStored = db.getEventsBySource("fargomoorhead.org")
-    const undergroundStored = db.getEventsBySource("fargounderground.com")
-    const downtownStored = db.getEventsBySource("downtownfargo.com")
-    const westFargoStored = db.getEventsBySource("westfargoevents.com")
-    const fargoLibraryStored = db.getEventsBySource("fargolibrary.org")
-    const westFargoLibraryStored = db.getEventsBySource("westfargolibrary.org")
-    const moorheadLibraryStored = db.getEventsBySource("larl.org")
-    const drekkerStored = db.getEventsBySource("drekkerbrewing.com")
-    const ndsuSportsStored = db.getEventsBySource("gobison.com")
-    const msumSportsStored = db.getEventsBySource("msumdragons.com")
-
-    const allMatches = [
-      ...findMatches(fargoStored, undergroundStored, 0.65),
-      ...findMatches(fargoStored, downtownStored, 0.65),
-      ...findMatches(fargoStored, westFargoStored, 0.65),
-      ...findMatches(fargoStored, fargoLibraryStored, 0.65),
-      ...findMatches(fargoStored, westFargoLibraryStored, 0.65),
-      ...findMatches(downtownStored, undergroundStored, 0.65),
-      ...findMatches(downtownStored, westFargoStored, 0.65),
-      ...findMatches(undergroundStored, westFargoStored, 0.65),
-      ...findMatches(undergroundStored, fargoLibraryStored, 0.65),
-      ...findMatches(undergroundStored, westFargoLibraryStored, 0.65),
-      ...findMatches(westFargoStored, fargoLibraryStored, 0.65),
-      ...findMatches(westFargoStored, westFargoLibraryStored, 0.65),
-      ...findMatches(fargoLibraryStored, westFargoLibraryStored, 0.65),
-      ...findMatches(fargoStored, moorheadLibraryStored, 0.65),
-      ...findMatches(undergroundStored, moorheadLibraryStored, 0.65),
-      ...findMatches(westFargoStored, moorheadLibraryStored, 0.65),
-      ...findMatches(fargoLibraryStored, moorheadLibraryStored, 0.65),
-      ...findMatches(westFargoLibraryStored, moorheadLibraryStored, 0.65),
-      ...findMatches(fargoStored, drekkerStored, 0.65),
-      ...findMatches(undergroundStored, drekkerStored, 0.65),
-      ...findMatches(downtownStored, drekkerStored, 0.65),
-      ...findMatches(westFargoStored, drekkerStored, 0.65),
-      ...findSelfMatches(fargoStored),
-      ...findSelfMatches(undergroundStored),
-      ...findSelfMatches(downtownStored),
-      ...findSelfMatches(westFargoStored),
-      ...findSelfMatches(fargoLibraryStored),
-      ...findSelfMatches(westFargoLibraryStored),
-      ...findSelfMatches(moorheadLibraryStored),
-      ...findSelfMatches(drekkerStored),
-      ...findSelfMatches(ndsuSportsStored),
-      ...findSelfMatches(msumSportsStored),
-    ]
-
-    db.clearMatches()
-    const byConfidence = { high: 0, medium: 0, low: 0 }
-    for (const match of allMatches) {
-      db.insertMatch({
-        eventId1: match.eventId1,
-        eventId2: match.eventId2,
-        score: match.totalScore,
-        confidence: match.confidence,
-        reasons: match.reasons,
-        matchType: "auto",
-      })
-      byConfidence[match.confidence]++
-    }
+    const allMatches = buildAllMatches(db)
+    const byConfidence = persistMatches(db, allMatches)
     console.log(
       `✓ Found ${allMatches.length} matches (${byConfidence.high} high, ${byConfidence.medium} medium, ${byConfidence.low} low)\n`,
     )
@@ -446,7 +122,7 @@ async function main() {
     console.log("✅ Re-fetch complete!")
   } catch (error) {
     console.error("❌ Error:", error)
-    process.exit(1)
+    process.exitCode = 1
   } finally {
     db.close()
   }
