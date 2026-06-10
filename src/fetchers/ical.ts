@@ -12,6 +12,15 @@ export interface ICalEvent {
   /** Local wall-clock start, HH:MM:SS, or null for all-day entries */
   startTime: string | null
   location: string | null
+  /** From GEO property, when present */
+  latitude: number | null
+  longitude: number | null
+  /** From ATTACH with FMTTYPE=image/*, when present */
+  imageUrl: string | null
+  /** From URL property, when present */
+  eventUrl: string | null
+  /** From CATEGORIES property, split on commas */
+  categoriesRaw: string[]
 }
 
 /**
@@ -87,6 +96,23 @@ function toEvent(
   const uid = (fields["UID"]?.value || "").trim()
   const title = unescapeICalText(summary.value).trim()
 
+  const geoParts = fields["GEO"]?.value.split(";")
+  const latitude = geoParts?.length === 2 ? (parseFloat(geoParts[0]) || null) : null
+  const longitude = geoParts?.length === 2 ? (parseFloat(geoParts[1]) || null) : null
+
+  const attachField = fields["ATTACH"]
+  const imageUrl =
+    attachField && /image/i.test(attachField.params)
+      ? attachField.value.trim() || null
+      : null
+
+  const eventUrl = fields["URL"]?.value?.trim() || null
+
+  const catField = fields["CATEGORIES"]?.value
+  const categoriesRaw = catField
+    ? unescapeICalText(catField).split(",").map((c) => c.trim()).filter(Boolean)
+    : []
+
   return {
     uid: uid || `${start.date}-${slugify(title)}`,
     title,
@@ -94,6 +120,11 @@ function toEvent(
     endDate: end?.date ?? start.date,
     startTime: start.time,
     location: cleanICalLocation(fields["LOCATION"]?.value),
+    latitude,
+    longitude,
+    imageUrl,
+    eventUrl,
+    categoriesRaw,
   }
 }
 
