@@ -15,6 +15,12 @@ export interface TribeRestConfig {
   /** IANA timezone of the venue (default America/Chicago) */
   timeZone?: string
   daysAhead?: number
+  /**
+   * Env var holding a relay URL that replaces apiBase (for sites whose WAF
+   * blocks our IPs — see infra/*-feed-worker). Read at fetch time so dotenv
+   * has loaded.
+   */
+  envUrlOverride?: string
 }
 
 /**
@@ -27,9 +33,15 @@ export class TribeRestFetcher {
   constructor(private readonly config: TribeRestConfig) {}
 
   async fetchEvents(): Promise<FargoUndergroundEvent[]> {
+    const relay = this.config.envUrlOverride
+      ? process.env[this.config.envUrlOverride]
+      : undefined
+    if (relay) {
+      console.log(`   Fetching via relay: ${relay.split("?")[0]}`)
+    }
     try {
       return await fetchTribeEvents<FargoUndergroundEvent>({
-        baseUrl: this.config.apiBase,
+        baseUrl: relay || this.config.apiBase,
         label: this.config.label,
         timeZone: this.config.timeZone ?? "America/Chicago",
         perPage: 100,

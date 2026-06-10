@@ -240,7 +240,9 @@ export async function fetchTribeEvents<TEvent>(
   let page = 1
 
   while (true) {
-    const url = `${options.baseUrl}?per_page=${perPage}&page=${page}&start_date=${dateRange.startDateStr}&end_date=${dateRange.endDateStr}`
+    // Relay URLs already carry ?key=…, so join with "&" in that case.
+    const sep = options.baseUrl.includes("?") ? "&" : "?"
+    const url = `${options.baseUrl}${sep}per_page=${perPage}&page=${page}&start_date=${dateRange.startDateStr}&end_date=${dateRange.endDateStr}`
 
     const response = await fetchWithRetry(
       url,

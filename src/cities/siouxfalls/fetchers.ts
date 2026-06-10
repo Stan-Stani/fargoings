@@ -42,6 +42,9 @@ export const SIOUXFALLS_FETCH_FNS: CityFetchFns = {
       eventIdPrefix: "levitt",
       label: "Levitt at the Falls fetch",
       defaultCity: "Sioux Falls",
+      // The site's WAF 403s datacenter (and probing) IPs — see
+      // infra/levitt-feed-worker.
+      envUrlOverride: "LEVITT_EVENTS_URL",
     })
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
