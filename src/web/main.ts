@@ -19,6 +19,7 @@ type EventItem = {
   longitude: number | null
   recurringCadence: "weekly" | "biweekly" | null
   recurringCount: number | null
+  possiblyCancelled: boolean
 }
 
 /** Slim shape served by /api/events/map — just what a marker needs. */
@@ -700,6 +701,17 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
         (item.recurringCount && item.recurringCount > 1
           ? ` · ${item.recurringCount} upcoming`
           : "")
+    titleTd.appendChild(chip)
+  }
+
+  if (item.possiblyCancelled) {
+    const chip = document.createElement("span")
+    chip.className = "cancelled-chip"
+    // Soft copy on purpose: a vanished aggregator listing is sometimes just
+    // churn, not a cancellation — the source link is right there to check.
+    chip.textContent = "possibly cancelled"
+    chip.title =
+      "This event no longer appears on the source site — check before going"
     titleTd.appendChild(chip)
   }
 

@@ -176,6 +176,7 @@ async function main() {
           longitude: row.longitude ?? null,
           recurringCadence: row.recurringCadence ?? null,
           recurringCount: row.recurringCount ?? null,
+          possiblyCancelled: row.possiblyCancelled === 1,
         })),
         total: result.total,
         page,

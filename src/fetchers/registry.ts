@@ -152,6 +152,8 @@ export interface SourceRunResult {
   eventCount: number | null
   durationMs: number
   errorMessage: string | null
+  /** UTC "YYYY-MM-DD HH:MM:SS" fetch start — feeds possibly-cancelled detection. */
+  startedAt: string | null
 }
 
 /**
@@ -169,6 +171,12 @@ export async function runSource(
 ): Promise<SourceRunResult> {
   const runType = opts.force ? "refetch" : "fetch"
   const startedAt = Date.now()
+  // Same format as SQLite's CURRENT_TIMESTAMP (UTC), so lastSeenAt rows can
+  // be compared lexicographically against it.
+  const startedAtUtc = new Date(startedAt)
+    .toISOString()
+    .slice(0, 19)
+    .replace("T", " ")
 
   if (!opts.force) {
     const lastUpdated = db.getSourceLastUpdatedDate(def.source)
@@ -183,6 +191,7 @@ export async function runSource(
         eventCount: null,
         durationMs: 0,
         errorMessage: null,
+        startedAt: startedAtUtc,
       }
       db.recordSourceRun({ ...result, runType })
       return result
@@ -209,6 +218,7 @@ export async function runSource(
       eventCount: events.length,
       durationMs: Date.now() - startedAt,
       errorMessage: null,
+      startedAt: startedAtUtc,
     }
     db.recordSourceRun({ ...result, runType })
     return result
@@ -223,6 +233,7 @@ export async function runSource(
       eventCount: null,
       durationMs: Date.now() - startedAt,
       errorMessage: error instanceof Error ? error.message : String(error),
+      startedAt: startedAtUtc,
     }
     db.recordSourceRun({ ...result, runType })
     return result

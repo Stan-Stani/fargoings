@@ -1,6 +1,10 @@
 import Database from "better-sqlite3"
 import { decodeHtmlEntities, normalizeText } from "../dedup/normalize"
-import { ALLOW_EMPTY_SOURCES, SPORTS_SOURCES } from "../fetchers/sources"
+import {
+  ALLOW_EMPTY_SOURCES,
+  SOURCE_INFO,
+  SPORTS_SOURCES,
+} from "../fetchers/sources"
 import { StoredEvent } from "../types/event"
 import { VENUE_RULES } from "../enrichment/venues"
 
@@ -34,6 +38,8 @@ export interface DisplayEvent {
   source: string
   latitude: number | null
   longitude: number | null
+  /** 1 when the source stopped listing this future event (see flagPossiblyCancelled). */
+  possiblyCancelled: number
   /** Series key when this row is part of a detected weekly/biweekly series. */
   recurringGroup: string | null
   /** Distinct upcoming dates in the series (within the stored window). */
@@ -55,6 +61,8 @@ export interface SourceRunRecord {
   eventCount: number | null
   durationMs: number | null
   errorMessage: string | null
+  /** UTC "YYYY-MM-DD HH:MM:SS" run start — comparable with CURRENT_TIMESTAMP. */
+  startedAt: string | null
 }
 
 export interface SourceHealth {
@@ -264,6 +272,24 @@ export class EventDatabase {
         this.db.pragma("user_version = 3")
       })()
     }
+
+    if (version < 4) {
+      // Possibly-cancelled detection: track when an event was last seen
+      // upstream (lastSeenAt) and when each fetch run started (startedAt) so
+      // the rebuild can flag future rows that vanished from their source.
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE events ADD COLUMN lastSeenAt TEXT;
+          ALTER TABLE source_runs ADD COLUMN startedAt TEXT;
+          ALTER TABLE display_events ADD COLUMN possiblyCancelled INTEGER DEFAULT 0;
+        `)
+        // Best available approximation for existing rows; venue enrichment
+        // also bumps updatedAt, so this can only over-estimate freshness
+        // (no false flags from the backfill).
+        this.db.exec("UPDATE events SET lastSeenAt = updatedAt")
+        this.db.pragma("user_version = 4")
+      })()
+    }
   }
 
   /** First category name from the categories JSON, decoded, or null. */
@@ -405,8 +431,8 @@ export class EventDatabase {
     event: Omit<StoredEvent, "id" | "createdAt" | "updatedAt">,
   ): void {
     const stmt = this.db.prepare(`
-      INSERT INTO events (eventId, title, url, location, date, startTime, startDate, endDate, latitude, longitude, city, imageUrl, categories, source)
-      VALUES (@eventId, @title, @url, @location, @date, @startTime, @startDate, @endDate, @latitude, @longitude, @city, @imageUrl, @categories, @source)
+      INSERT INTO events (eventId, title, url, location, date, startTime, startDate, endDate, latitude, longitude, city, imageUrl, categories, source, lastSeenAt)
+      VALUES (@eventId, @title, @url, @location, @date, @startTime, @startDate, @endDate, @latitude, @longitude, @city, @imageUrl, @categories, @source, CURRENT_TIMESTAMP)
       ON CONFLICT(eventId) DO UPDATE SET
         title = @title,
         url = @url,
@@ -420,7 +446,10 @@ export class EventDatabase {
         city = COALESCE(@city, events.city),
         imageUrl = COALESCE(@imageUrl, events.imageUrl),
         categories = @categories,
-        updatedAt = CURRENT_TIMESTAMP
+        updatedAt = CURRENT_TIMESTAMP,
+        -- "Seen upstream" signal; distinct from updatedAt, which venue
+        -- enrichment also bumps.
+        lastSeenAt = CURRENT_TIMESTAMP
     `)
 
     const normalizedEvent = {
@@ -494,8 +523,8 @@ export class EventDatabase {
     this.db
       .prepare(
         `
-      INSERT INTO source_runs (source, runType, status, eventCount, durationMs, errorMessage)
-      VALUES (@source, @runType, @status, @eventCount, @durationMs, @errorMessage)
+      INSERT INTO source_runs (source, runType, status, eventCount, durationMs, errorMessage, startedAt)
+      VALUES (@source, @runType, @status, @eventCount, @durationMs, @errorMessage, @startedAt)
     `,
       )
       .run(run)
@@ -818,10 +847,65 @@ export class EventDatabase {
         .run({ today: todayInFargo })
       this.populateDisplayCategories()
       this.tagRecurringSeries()
+      this.flagPossiblyCancelled()
       return result.changes
     })
 
     return transaction()
+  }
+
+  /**
+   * Flag future display rows whose raw event was NOT returned by the most
+   * recent successful fetch of its source — the upstream listing vanished,
+   * which usually means cancelled (or moved, which regenerates the eventId).
+   * Only applies within the source's fetch horizon: an event dated beyond
+   * what the fetch window covers simply wasn't asked for, not removed.
+   * Sports schedules and horizon-null sources are exempt. Skipped (cache
+   * fresh) and errored runs are naturally safe because the reference point
+   * is the last *successful* run, whose own inserts all have
+   * lastSeenAt >= startedAt. Callers run it inside their own transaction.
+   */
+  private flagPossiblyCancelled(): void {
+    const lastOkRun = this.db.prepare(
+      `SELECT startedAt FROM source_runs
+       WHERE source = ? AND status = 'ok' AND startedAt IS NOT NULL
+       ORDER BY id DESC LIMIT 1`,
+    )
+    const flag = this.db.prepare(
+      `UPDATE display_events SET possiblyCancelled = 1
+       WHERE source = @source
+         AND date <= @horizonEnd
+         AND eventId IN (
+           SELECT eventId FROM events
+           WHERE source = @source AND lastSeenAt < @startedAt
+         )`,
+    )
+
+    for (const info of SOURCE_INFO) {
+      if (info.sports) continue
+      const horizonDays = info.fetchHorizonDays === undefined ? 14 : info.fetchHorizonDays
+      if (horizonDays === null) continue
+
+      const run = lastOkRun.get(info.source) as
+        | { startedAt: string }
+        | undefined
+      if (!run) continue
+
+      // startedAt is UTC; the horizon counts from the run's local date.
+      const runDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: this.displayTimeZone,
+      }).format(new Date(run.startedAt.replace(" ", "T") + "Z"))
+      const [y, m, d] = runDate.split("-").map(Number)
+      const horizonEnd = new Date(Date.UTC(y, m - 1, d + horizonDays))
+        .toISOString()
+        .slice(0, 10)
+
+      flag.run({
+        source: info.source,
+        horizonEnd,
+        startedAt: run.startedAt,
+      })
+    }
   }
 
   /**
