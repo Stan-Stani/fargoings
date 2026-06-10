@@ -4,6 +4,7 @@ import { logError } from "../log"
 import { StoredEvent } from "../types/event"
 import { AquariumFargoFetcher } from "./aquariumfargo-com"
 import { DowntownFargoFetcher } from "./downtownfargo-com"
+import { FargodomeFetcher } from "./fargodome-com"
 import { DrekkerBrewingFetcher } from "./drekkerbrewing-com"
 import { FargoLibraryFetcher } from "./fargolibrary-org"
 import { FargoParksFetcher } from "./fargoparks-com"
@@ -100,6 +101,11 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
   },
   "myndsu.ndsu.edu": async () => {
     const fetcher = new MyNdsuFetcher()
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "fargodome.com": async () => {
+    const fetcher = new FargodomeFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },

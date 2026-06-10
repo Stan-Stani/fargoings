@@ -38,4 +38,14 @@ export const VENUE_RULES: VenueRule[] = [
     latitude: 46.8744,
     longitude: -96.7919,
   },
+  {
+    // Normalizes both fargodome.com rows (location "FARGODOME", no coords)
+    // and aggregator copies, which also helps cross-source geo matching.
+    titlePattern: /fargodome/i,
+    htmlPattern: /fargodome\.com/i,
+    location: "FARGODOME, 1800 N University Dr",
+    city: "Fargo",
+    latitude: 46.8975,
+    longitude: -96.802,
+  },
 ]

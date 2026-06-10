@@ -115,6 +115,14 @@ export const SOURCE_INFO: SourceInfo[] = [
     sports: false,
     dedupPriority: 12,
   },
+  {
+    // RSS lists every announced event, often months out.
+    source: "fargodome.com",
+    aliases: ["fargodome", "dome"],
+    sports: false,
+    dedupPriority: 13,
+    fetchHorizonDays: 365,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
