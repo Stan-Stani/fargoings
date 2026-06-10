@@ -46,6 +46,14 @@ type MapEventsResponse = {
 
 type ThemePreference = "auto" | "light" | "dark"
 
+type CityConfigResponse = {
+  cityId: string
+  displayName: string
+  branding: { siteTitle: string; tagline: string; htmlTitle: string }
+  map: { center: [number, number]; desktopZoom: number; mobileZoom: number }
+  timeZone: string
+}
+
 declare const __APP_VERSION__: string
 
 const apiPath = "/api/events"
@@ -87,12 +95,42 @@ const venueGroupRefs = new Map<
   { header: HTMLTableRowElement; children: HTMLTableRowElement[] }
 >()
 
+// Per-deployment city identity, fetched from /api/config at boot. The
+// defaults are the Fargo values so an old API (deploy window) or a failed
+// fetch leaves the original behavior untouched. The static <title>/<h1> in
+// index.html double as the same fallback.
+const cityUi = {
+  htmlTitle: "Fargoings | Goings-On in Fargo",
+  map: {
+    center: [46.877, -96.789] as [number, number],
+    // Desktop feels better slightly zoomed out so the whole metro fits
+    // comfortably.
+    desktopZoom: 11,
+    mobileZoom: 12,
+  },
+}
+
+const cityConfigReady: Promise<void> = fetch("/api/config", {
+  signal: AbortSignal.timeout(5000),
+})
+  .then((response) => (response.ok ? response.json() : null))
+  .then((config: CityConfigResponse | null) => {
+    if (!config) return
+    cityUi.htmlTitle = config.branding.htmlTitle
+    cityUi.map = config.map
+    document.title = config.branding.htmlTitle
+    const siteTitleEl = document.getElementById("siteTitle")
+    if (siteTitleEl) {
+      siteTitleEl.textContent = config.branding.htmlTitle
+    }
+  })
+  .catch(() => {})
+
 function getInitialMapView(): { center: L.LatLngExpression; zoom: number } {
-  // Desktop feels better slightly zoomed out so Fargo + Moorhead fit comfortably.
   const isDesktop = window.matchMedia("(min-width: 1024px)").matches
   return {
-    center: [46.877, -96.789],
-    zoom: isDesktop ? 11 : 12,
+    center: cityUi.map.center,
+    zoom: isDesktop ? cityUi.map.desktopZoom : cityUi.map.mobileZoom,
   }
 }
 
@@ -581,20 +619,25 @@ function setViewMode(mode: ViewMode): void {
   if (mode === "map") {
     tableWrapContainerEl.style.display = "none"
     mapContainerEl.style.display = "block"
-    initMap()
-    // Leaflet needs a size recalculation when the container becomes visible.
-    queueMicrotask(() => {
-      mapInstance?.invalidateSize()
+    metaEl.textContent = "Loading map…"
+    // The map centers on the active city, so its first init waits for
+    // /api/config (already settled long before a human can toggle views).
+    void cityConfigReady.then(() => {
+      if (viewMode !== "map") return
+      initMap()
+      // Leaflet needs a size recalculation when the container becomes visible.
+      queueMicrotask(() => {
+        mapInstance?.invalidateSize()
+      })
+      // Map view shows ALL matching events, fetched separately from the
+      // list's pagination.
+      if (mapItems) {
+        renderMap(mapItems)
+        updateMapMeta()
+      } else {
+        loadMapEvents()
+      }
     })
-    // Map view shows ALL matching events, fetched separately from the list's
-    // pagination.
-    if (mapItems) {
-      renderMap(mapItems)
-      updateMapMeta()
-    } else {
-      metaEl.textContent = "Loading map…"
-      loadMapEvents()
-    }
   } else {
     mapContainerEl.style.display = "none"
     // Important on mobile: CSS sets #tableWrapContainer to `display: contents` so

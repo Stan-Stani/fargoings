@@ -13,7 +13,7 @@
     "web:dev": "concurrently -k \"tsx watch src/web/api.ts\" \"vite\"",
     "web:api": "tsx src/web/api.ts",
     "web:build": "vite build",
-    "web:prod": "concurrently -k \"tsx src/web/api.ts\" \"vite preview --host --port 8787 --strictPort\"",
+    "web:prod": "concurrently -k \"tsx src/web/api.ts\" \"vite preview --host --strictPort\"",
     "dedup": "tsx src/dedup.ts",
     "search": "tsx src/search.ts",
     "refetch": "tsx src/refetch.ts",

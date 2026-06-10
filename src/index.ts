@@ -1,4 +1,5 @@
 import "dotenv/config"
+import { getActiveCity } from "./cities"
 import { EventDatabase } from "./db/database"
 import {
   buildAllMatches,
@@ -16,7 +17,7 @@ function getLocalDateString(date: Date): string {
 }
 
 async function main() {
-  console.log("🎉 Fargo Event Aggregator Starting...\n")
+  console.log(`🎉 ${getActiveCity().displayName} Event Aggregator Starting...\n`)
 
   const db = new EventDatabase()
 

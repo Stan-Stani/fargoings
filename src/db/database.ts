@@ -6,7 +6,7 @@ import {
   SPORTS_SOURCES,
 } from "../fetchers/sources"
 import { StoredEvent } from "../types/event"
-import { VENUE_RULES } from "../enrichment/venues"
+import { getActiveCity } from "../cities"
 
 export { SPORTS_SOURCES }
 
@@ -79,9 +79,9 @@ export interface SourceHealth {
 
 export class EventDatabase {
   private db: Database.Database
-  private readonly displayTimeZone = "America/Chicago"
+  private readonly displayTimeZone = getActiveCity().timeZone
 
-  constructor(dbPath: string = "./events.db") {
+  constructor(dbPath: string = getActiveCity().dbPath) {
     this.db = new Database(dbPath)
     // The weekly cron writer and the long-running API reader share this
     // file; WAL + a busy timeout keep readers from hitting SQLITE_BUSY
@@ -1157,7 +1157,7 @@ export class EventDatabase {
     let count = 0
     const transaction = this.db.transaction(() => {
       for (const row of allEvents) {
-        for (const rule of VENUE_RULES) {
+        for (const rule of getActiveCity().venueRules) {
           if (
             rule.titlePattern.test(row.title) ||
             (row.location != null && rule.titlePattern.test(row.location))
@@ -1213,7 +1213,7 @@ export class EventDatabase {
     let count = 0
     const transaction = this.db.transaction(() => {
       for (const row of allEvents) {
-        for (const rule of VENUE_RULES) {
+        for (const rule of getActiveCity().venueRules) {
           if (
             rule.titlePattern.test(row.title) ||
             (row.location != null && rule.titlePattern.test(row.location))

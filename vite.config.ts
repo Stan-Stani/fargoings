@@ -1,7 +1,13 @@
+// Loads .env so API_PORT/WEB_PORT set there (not just in the shell) reach
+// the dev server and `vite preview` alike.
+import "dotenv/config"
 import { readFileSync } from "node:fs"
 import { defineConfig } from "vite"
 
 const apiPort = Number(process.env.API_PORT || 8788)
+// Parameterized so two city instances can share one box (e.g. Fargo on 8787,
+// Sioux Falls on 8789).
+const webPort = Number(process.env.WEB_PORT || 8787)
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   version?: string
 }
@@ -23,7 +29,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 8787,
+    port: webPort,
     proxy: {
       "/api": {
         target: `http://localhost:${apiPort}`,
@@ -36,7 +42,7 @@ export default defineConfig({
     },
   },
   preview: {
-    port: 8787,
+    port: webPort,
     proxy: {
       "/api": {
         target: `http://localhost:${apiPort}`,

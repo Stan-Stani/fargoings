@@ -27,6 +27,8 @@ export interface SidearmConfig {
   sourceId: string
   /** City the program plays its home games in */
   city: string
+  /** IANA timezone of the home venue (default America/Chicago). */
+  timeZone?: string
 }
 
 /**
@@ -42,9 +44,11 @@ export interface SidearmConfig {
  * date and is the reliable date source.
  */
 export class SidearmSportsFetcher {
-  private readonly timeZone = "America/Chicago"
+  private readonly timeZone: string
 
-  constructor(private readonly config: SidearmConfig) {}
+  constructor(private readonly config: SidearmConfig) {
+    this.timeZone = config.timeZone ?? "America/Chicago"
+  }
 
   async fetchEvents(): Promise<SidearmEvent[]> {
     try {

@@ -1,15 +1,16 @@
 import "dotenv/config"
 import { createServer } from "http"
 import { URL } from "url"
+import { getActiveCity } from "../cities"
 import { EventDatabase } from "../db/database"
 import { ALL_SOURCE_IDS } from "../fetchers/sources"
 
 const PORT = Number(process.env.API_PORT || 8788)
 
-function getCurrentDateChicago(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(
-    new Date(),
-  )
+function getCurrentDateLocal(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: getActiveCity().timeZone,
+  }).format(new Date())
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -46,7 +47,7 @@ function resolveDateRange(
   rawFrom: string,
   rawTo: string,
 ): { dateFrom: string; dateTo: string } {
-  const today = getCurrentDateChicago()
+  const today = getCurrentDateLocal()
   if (preset === "today") {
     return { dateFrom: today, dateTo: today }
   }
@@ -138,6 +139,21 @@ async function main() {
       return
     }
 
+    if (pathname === "/api/config") {
+      // Per-deployment city identity for the frontend (branding, map view).
+      // One build artifact serves any city; main.ts falls back to Fargo
+      // values if this endpoint is missing (old API during a deploy window).
+      const city = getActiveCity()
+      sendJson(res, 200, {
+        cityId: city.id,
+        displayName: city.displayName,
+        branding: city.branding,
+        map: city.map,
+        timeZone: city.timeZone,
+      })
+      return
+    }
+
     if (pathname === "/api/categories") {
       sendJson(res, 200, { categories: db.getDistinctCategories() })
       return
@@ -203,11 +219,15 @@ async function main() {
         filters.collapseRepeats,
       )
 
-      // Coordinates far outside the Fargo–Moorhead region are upstream
-      // geocoding junk (e.g. virtual events pinned to the US centroid);
-      // treat them as unmappable so they can't blow up the map bounds.
+      // Coordinates far outside the city's region are upstream geocoding
+      // junk (e.g. virtual events pinned to the US centroid); treat them as
+      // unmappable so they can't blow up the map bounds.
+      const region = getActiveCity().region
       const inRegion = (lat: number, lng: number) =>
-        lat > 45.5 && lat < 48 && lng > -98.5 && lng < -95
+        lat > region.minLat &&
+        lat < region.maxLat &&
+        lng > region.minLng &&
+        lng < region.maxLng
 
       const items = result.rows.map((row) => {
         const hasCoords =
