@@ -1,5 +1,5 @@
 import Database from "better-sqlite3"
-import { decodeHtmlEntities } from "../dedup/normalize"
+import { decodeHtmlEntities, normalizeText } from "../dedup/normalize"
 import { ALLOW_EMPTY_SOURCES, SPORTS_SOURCES } from "../fetchers/sources"
 import { StoredEvent } from "../types/event"
 import { VENUE_RULES } from "../enrichment/venues"
@@ -34,6 +34,11 @@ export interface DisplayEvent {
   source: string
   latitude: number | null
   longitude: number | null
+  /** Series key when this row is part of a detected weekly/biweekly series. */
+  recurringGroup: string | null
+  /** Distinct upcoming dates in the series (within the stored window). */
+  recurringCount: number | null
+  recurringCadence: "weekly" | "biweekly" | null
   createdAt: string
   updatedAt: string
 }
@@ -240,6 +245,23 @@ export class EventDatabase {
         // Backfill the category column for existing display rows.
         this.populateDisplayCategories()
         this.db.pragma("user_version = 2")
+      })()
+    }
+
+    if (version < 3) {
+      // Recurring-series detection ("Trivia every Tuesday"). Tagged at
+      // rebuild time; tagged here too so prod collapses repeats immediately
+      // after deploy instead of waiting for the next weekly rebuild.
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE display_events ADD COLUMN recurringGroup TEXT;
+          ALTER TABLE display_events ADD COLUMN recurringCount INTEGER;
+          ALTER TABLE display_events ADD COLUMN recurringCadence TEXT;
+          CREATE INDEX IF NOT EXISTS idx_display_events_recurring
+            ON display_events(recurringGroup);
+        `)
+        this.tagRecurringSeries()
+        this.db.pragma("user_version = 3")
       })()
     }
   }
@@ -795,10 +817,87 @@ export class EventDatabase {
         )
         .run({ today: todayInFargo })
       this.populateDisplayCategories()
+      this.tagRecurringSeries()
       return result.changes
     })
 
     return transaction()
+  }
+
+  /**
+   * Detect recurring series ("Trivia every Tuesday") among display rows and
+   * tag them so the query layer can collapse a series to its next
+   * occurrence. A group is the same (source, normalized title, location); it
+   * counts as a series when its distinct dates are uniformly 7 days apart
+   * (or uniformly 14 → "biweekly") — with ≥3 dates, or with exactly 2 dates
+   * when every row also shares one non-null start time and a non-null
+   * location (the usual 14-day fetch window only ever shows 2 occurrences of
+   * a weekly event, but the stricter rule keeps two-part workshops intact).
+   * Sports schedules are excluded; weekly games are the product, not noise.
+   * Callers run it inside their own transaction.
+   */
+  private tagRecurringSeries(): void {
+    const placeholders = SPORTS_SOURCES.map(() => "?").join(", ")
+    const rows = this.db
+      .prepare(
+        `SELECT id, source, title, location, date, startTime FROM display_events
+         ${SPORTS_SOURCES.length ? `WHERE source NOT IN (${placeholders})` : ""}`,
+      )
+      .all(...SPORTS_SOURCES) as {
+      id: number
+      source: string
+      title: string
+      location: string | null
+      date: string
+      startTime: string | null
+    }[]
+
+    const groups = new Map<string, typeof rows>()
+    for (const row of rows) {
+      const key = `${row.source}|${normalizeText(row.title)}|${row.location ?? ""}`
+      const list = groups.get(key) || []
+      list.push(row)
+      groups.set(key, list)
+    }
+
+    const dayNumber = (date: string) =>
+      Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10)) /
+      86_400_000
+
+    const update = this.db.prepare(
+      `UPDATE display_events
+       SET recurringGroup = ?, recurringCount = ?, recurringCadence = ?
+       WHERE id = ?`,
+    )
+
+    for (const [key, members] of groups) {
+      const dates = Array.from(new Set(members.map((m) => m.date))).sort()
+      if (dates.length < 2) continue
+
+      const gaps: number[] = []
+      for (let i = 1; i < dates.length; i++) {
+        gaps.push(dayNumber(dates[i]) - dayNumber(dates[i - 1]))
+      }
+      const uniform = (n: number) => gaps.every((g) => g === n)
+      const cadence = uniform(7) ? "weekly" : uniform(14) ? "biweekly" : null
+      if (!cadence) continue
+
+      if (dates.length === 2) {
+        const startTimes = new Set(members.map((m) => m.startTime))
+        if (
+          cadence !== "weekly" ||
+          startTimes.size !== 1 ||
+          startTimes.has(null) ||
+          members[0].location == null
+        ) {
+          continue
+        }
+      }
+
+      for (const member of members) {
+        update.run(key, dates.length, cadence, member.id)
+      }
+    }
   }
 
   getDisplayEvents(
@@ -867,6 +966,7 @@ export class EventDatabase {
     dateFrom: string = "",
     dateTo: string = "",
     includeSports: boolean = false,
+    collapseRepeats: boolean = false,
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
     const normalizedCategory = category.trim().toLowerCase()
@@ -910,6 +1010,22 @@ export class EventDatabase {
         `source NOT IN (${SPORTS_SOURCES.map(() => "?").join(", ")})`,
       )
       params.push(...SPORTS_SOURCES)
+    }
+
+    // Collapse a recurring series to its next occurrence *within the
+    // filtered range* — computed live (not baked at rebuild) so it stays
+    // correct as days pass between weekly rebuilds and under the
+    // today/weekend/week presets.
+    if (collapseRepeats) {
+      conditions.push(`(
+        recurringGroup IS NULL OR date = (
+          SELECT MIN(d2.date) FROM display_events d2
+          WHERE d2.recurringGroup = display_events.recurringGroup
+            AND d2.date >= ?
+            AND (? = '' OR d2.date <= ?)
+        )
+      )`)
+      params.push(effectiveDateFrom, dateTo, dateTo)
     }
 
     const whereClause = `WHERE ${conditions.join(" AND ")}`

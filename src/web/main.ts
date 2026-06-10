@@ -17,6 +17,8 @@ type EventItem = {
   altUrl: string | null
   latitude: number | null
   longitude: number | null
+  recurringCadence: "weekly" | "biweekly" | null
+  recurringCount: number | null
 }
 
 /** Slim shape served by /api/events/map — just what a marker needs. */
@@ -57,6 +59,10 @@ let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
 const showSportsStorageKey = "showSports"
 let showSports = localStorage.getItem(showSportsStorageKey) === "1"
+// Recurring series are collapsed to their next occurrence by default; this
+// toggle opts into seeing every date.
+const showRepeatsStorageKey = "showRepeats"
+let showRepeats = localStorage.getItem(showRepeatsStorageKey) === "1"
 let currentItems: EventItem[] = []
 let totalResults = 0
 let isLoading = false
@@ -129,6 +135,9 @@ const categoryFilterEl = document.getElementById(
 ) as HTMLSelectElement
 const showSportsToggleEl = document.getElementById(
   "showSportsToggle",
+) as HTMLInputElement
+const showRepeatsToggleEl = document.getElementById(
+  "showRepeatsToggle",
 ) as HTMLInputElement
 const themeToggleBtn = document.getElementById(
   "themeToggle",
@@ -528,6 +537,7 @@ async function loadMapEvents(): Promise<void> {
   if (categoryFilter) params.set("category", categoryFilter)
   if (datePreset && datePreset !== "all") params.set("preset", datePreset)
   if (showSports) params.set("sports", "show")
+  if (showRepeats) params.set("repeats", "all")
 
   try {
     const response = await fetch("/api/events/map?" + params.toString(), {
@@ -678,6 +688,20 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
   titleText.className = "event-title"
   titleText.textContent = item.title
   titleTd.appendChild(titleText)
+
+  if (item.recurringCadence) {
+    const chip = document.createElement("span")
+    chip.className = "recurring-chip"
+    // Collapsed mode shows one row standing in for the series; show-all mode
+    // shows every date, so the chip just labels the cadence.
+    chip.textContent = showRepeats
+      ? item.recurringCadence
+      : `repeats ${item.recurringCadence}` +
+        (item.recurringCount && item.recurringCount > 1
+          ? ` · ${item.recurringCount} upcoming`
+          : "")
+    titleTd.appendChild(chip)
+  }
 
   const dateTd = document.createElement("td")
   dateTd.setAttribute("data-label", "Date")
@@ -1071,6 +1095,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   if (categoryFilter) params.set("category", categoryFilter)
   if (datePreset && datePreset !== "all") params.set("preset", datePreset)
   if (showSports) params.set("sports", "show")
+  if (showRepeats) params.set("repeats", "all")
 
   try {
     // Timeout so a hung request can't strand the UI on "Loading…" forever.
@@ -1241,6 +1266,13 @@ showSportsToggleEl.checked = showSports
 showSportsToggleEl.addEventListener("change", () => {
   showSports = showSportsToggleEl.checked
   localStorage.setItem(showSportsStorageKey, showSports ? "1" : "0")
+  applyFiltersChanged()
+})
+
+showRepeatsToggleEl.checked = showRepeats
+showRepeatsToggleEl.addEventListener("change", () => {
+  showRepeats = showRepeatsToggleEl.checked
+  localStorage.setItem(showRepeatsStorageKey, showRepeats ? "1" : "0")
   applyFiltersChanged()
 })
 

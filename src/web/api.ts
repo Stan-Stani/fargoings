@@ -88,6 +88,7 @@ interface EventFilters {
   dateFrom: string
   dateTo: string
   includeSports: boolean
+  collapseRepeats: boolean
 }
 
 function parseEventFilters(searchParams: URLSearchParams): EventFilters {
@@ -103,6 +104,9 @@ function parseEventFilters(searchParams: URLSearchParams): EventFilters {
     dateFrom,
     dateTo,
     includeSports: searchParams.get("sports") === "show",
+    // Recurring series collapse to their next occurrence unless the client
+    // opts into seeing every date (`repeats=all`).
+    collapseRepeats: searchParams.get("repeats") !== "all",
   }
 }
 
@@ -157,6 +161,7 @@ async function main() {
         filters.dateFrom,
         filters.dateTo,
         filters.includeSports,
+        filters.collapseRepeats,
       )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
@@ -169,6 +174,8 @@ async function main() {
           categories: row.category ?? null,
           latitude: row.latitude ?? null,
           longitude: row.longitude ?? null,
+          recurringCadence: row.recurringCadence ?? null,
+          recurringCount: row.recurringCount ?? null,
         })),
         total: result.total,
         page,
@@ -192,6 +199,7 @@ async function main() {
         filters.dateFrom,
         filters.dateTo,
         filters.includeSports,
+        filters.collapseRepeats,
       )
 
       // Coordinates far outside the Fargo–Moorhead region are upstream
