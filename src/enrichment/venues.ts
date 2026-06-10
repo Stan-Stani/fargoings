@@ -48,4 +48,14 @@ export const VENUE_RULES: VenueRule[] = [
     latitude: 46.8975,
     longitude: -96.802,
   },
+  {
+    // fargotheatre.org rows carry no location at all; the listing page is
+    // the venue's own site, so every row is at the theatre itself.
+    titlePattern: /fargo theatre/i,
+    htmlPattern: /fargotheatre\.org/i,
+    location: "Fargo Theatre, 314 Broadway N",
+    city: "Fargo",
+    latitude: 46.8762,
+    longitude: -96.7898,
+  },
 ]

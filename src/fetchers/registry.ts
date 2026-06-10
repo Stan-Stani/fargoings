@@ -8,6 +8,7 @@ import { FargodomeFetcher } from "./fargodome-com"
 import { DrekkerBrewingFetcher } from "./drekkerbrewing-com"
 import { FargoLibraryFetcher } from "./fargolibrary-org"
 import { FargoParksFetcher } from "./fargoparks-com"
+import { FargoTheatreFetcher } from "./fargotheatre-org"
 import { FargoFetcher } from "./fargomoorhead-com"
 import { FargoUndergroundFetcher } from "./fargounderground-com"
 import { GoCobbersFetcher } from "./gocobbers-com"
@@ -122,6 +123,11 @@ const FETCH_FNS: Record<string, () => Promise<FetchedEvent[]>> = {
   },
   "gocobbers.com": async () => {
     const fetcher = new GoCobbersFetcher()
+    const events = await fetcher.fetchEvents()
+    return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "fargotheatre.org": async () => {
+    const fetcher = new FargoTheatreFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
   },

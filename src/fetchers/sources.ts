@@ -141,6 +141,14 @@ export const SOURCE_INFO: SourceInfo[] = [
     allowEmpty: true,
     fetchHorizonDays: null,
   },
+  {
+    // Listing shows all announced live events, often months out.
+    source: "fargotheatre.org",
+    aliases: ["fargotheatre", "theatre"],
+    sports: false,
+    dedupPriority: 14,
+    fetchHorizonDays: 365,
+  },
 ]
 
 export const ALL_SOURCE_IDS = SOURCE_INFO.map((s) => s.source)
