@@ -1,8 +1,48 @@
 # Implementation Plan
 
-_Last refreshed: 2026-06-09. Current version: v1.1.34._
+_Last refreshed: 2026-06-10. Current version: v1.1.34._
 
 ## Shipped
+
+- **Venue coverage + list quality round (2026-06-10):**
+  - **7 new sources** (registry pattern, one commit each): **The Aquarium**
+    (`aquariumfargo-com.ts`, Tribe REST — apex domain only, www. is WAF-403'd;
+    same-site Referer/no Origin), **Fargo Parks** (`fargoparks-com.ts`, Drupal
+    fullcalendar JSON at `/calendar-events-2` — feed truncates titles to ~11
+    chars, titles rebuilt from the `view_node` slug; "Deadlines" dropped),
+    **NDSU campus** (`myndsu-ndsu-edu.ts`, CampusLabs Engage discovery API —
+    public JSON; events.rss is hard-capped to 7 days), **FARGODOME**
+    (`fargodome-com.ts`, carbonhouse RSS with `ev:startdate` — **no
+    Ticketmaster key needed**; horizon 365), **Fargo Force** (existing
+    `SidearmSportsFetcher`, config only; sports + allowEmpty — offseason feed
+    is legitimately ~empty), **Concordia athletics** (`gocobbers-com.ts`,
+    PrestoSports composite iCal — cobbers.com is a dead WP install, the live
+    site is gocobbers.com; feed reaches back to 2005 so a today..+150d window
+    is enforced), **Fargo Theatre** (`fargotheatre-org.ts`, one-page listing
+    scrape — Theater-plugin REST has no dates; Wordfence 406s non-browser UAs;
+    no showtimes published, startTime null; movie showtimes out of scope).
+    Venue rules added for FARGODOME + Fargo Theatre coords. Dedup verified:
+    venue rows outrank aggregator copies (Matt Rife, Ward Davis et al.).
+  - **Part 0 refactor**: shared `src/fetchers/ical.ts` (RFC 5545 parser out of
+    the WFPL fetcher), `utcInstantToLocal`/`rssTag`/`slugify` in `shared.ts`;
+    `SourceInfo.allowEmpty` (seasonal feeds exempt from the 0-events health
+    flag — set on drekker, fargoforce, gocobbers) and
+    `SourceInfo.fetchHorizonDays` (cancelled-detection horizon).
+  - **Recurring-event collapse (migration v3)** — `tagRecurringSeries()` at
+    rebuild groups (source, normalized title, location); uniform 7/14-day
+    date spacing ⇒ weekly/biweekly series (2-occurrence series additionally
+    require one shared non-null startTime + location). Query layer collapses
+    a series to its next occurrence *within the filtered range* (live
+    subquery, list+map consistent); `repeats=all` opts out; "Show repeats"
+    pill (localStorage) + "repeats weekly · N upcoming" chip. 13 series
+    (storytimes, bingo, senior socials) collapse on current data.
+  - **Possibly-cancelled detection (migration v4)** — `events.lastSeenAt`
+    (bumped on every upsert; distinct from updatedAt which enrichment also
+    touches), `source_runs.startedAt`, `flagPossiblyCancelled()` at rebuild:
+    non-sports rows dated within (last ok run + fetchHorizonDays) whose raw
+    event wasn't seen by that run get a soft amber "possibly cancelled" chip
+    (row kept). Horizon guard verified with a synthetic backdated run.
+    Inert per source until its first post-deploy ok run.
 
 - **Reliability/perf round (2026-06-09):**
   - **Fetcher registry** — `src/fetchers/sources.ts` (pure data: ids, aliases, sports flag, dedup priority) + `src/fetchers/registry.ts` (fetch closures, shared `runSource`, generated dedup pairs). `index.ts`, `refetch.ts`, and `dedup.ts` all iterate it; the old "update two files in sync" failure mode is gone. Cross-source pairs are now generated for ALL non-sports pairs (a few previously-missing pairs like downtownfargo×fargolibrary are now covered).
@@ -108,18 +148,27 @@ blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
   **Known minor:** same-day doubleheaders can self-dedupe (distinct
   game_ids but near-identical title/time). Concordia (`cobbers.com`) is
   NOT Sidearm (404) — separate scope.
-- **FargoDome** + **Fargo Force** — Ticketmaster-backed. Ticketmaster
-  Discovery API (free key, by venue id) → "enable an API key?" decision,
-  same call as D (Google Reviews). **Needs user decision before build.**
-- **Plains Art Museum** — WordPress but NOT Tribe (`rest_no_route`); identify
-  its events plugin/endpoint. Moderate.
-- **Concordia** campus + athletics, **NDSU/MSUM academic** calendars —
-  platforms still unidentified; research when convenient (high volume).
-- **Fargo Theatre** (406'd our UA — real-UA/scrape; ticketing likely
-  Spektrix/Agile), **Red River Zoo**, **Fargo Park District** — unknown
-  platforms; scout + scope individually.
+- ✅ **FargoDome** + **Fargo Force** — SHIPPED 2026-06-10. carbonhouse RSS /
+  Sidearm ICS made the Ticketmaster API-key question moot.
+- ✅ **Fargo Theatre**, **Fargo Park District**, **NDSU campus**
+  (myndsu Engage), **Concordia athletics** (gocobbers PrestoSports),
+  **The Aquarium** — all SHIPPED 2026-06-10 (see Shipped above).
+- **Plains Art Museum** — WordPress, NO events plugin (theme CPT with
+  `show_in_rest=false`, scouted 2026-06-10). Scrape the single-page
+  `/events/` archive (~10 events, dates inline as
+  "June 7, 2026 - 11:00 am to 2:00 pm"); `/events/feed/` RSS is a change
+  signal only (pubDate is publish date). Moderate; next venue up.
+- **Concordia campus** — custom PHP CMS; listing at `/events/` + per-event
+  iCal at `/events/ical/{slug}/{YYYY-MM-DD}/` (verified 2026-06-10).
+  Easy-moderate.
+- **MSUM campus** — Accruent EMS Master Calendar ("Book It"); the RSS feeds
+  exist but are stale/empty (lastBuildDate 2017); the live calendar loads
+  via XHR — needs a headless-browser network trace to find the endpoint.
+  Moderate-hard; park.
 - ❌ **Dropped:** Sanctuary Events Center (wedding/corporate venue — no
-  public event feed) and Fargo Brewing (business closing; site expired).
+  public event feed), Fargo Brewing (business closing; site expired), and
+  **Red River Zoo** (static S3 WordPress export, no events/calendar page at
+  all — scouted 2026-06-10; ticketing is Hornblower).
 
 Per `AGENTS.md`: a new fetcher is one entry in `src/fetchers/sources.ts` +
 one fetch closure in `src/fetchers/registry.ts` (dedup pairs, aliases, and

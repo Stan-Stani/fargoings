@@ -4,11 +4,20 @@ A Node.js/TypeScript event aggregator that fetches and stores events from multip
 
 ## Features
 
-- Aggregates events from **4 sources**:
+- Aggregates events from **17 sources**:
   - fargomoorhead.org (API with dynamic token)
   - fargounderground.com (JSON API)
   - downtownfargo.com (POST API + HTML scraping for locations)
   - westfargoevents.com (WordPress/The Events Calendar JSON API)
+  - fargolibrary.org, westfargolibrary.org, larl.org (Moorhead) — the three
+    public libraries
+  - drekkerbrewing.com + aquariumfargo.com (The Events Calendar JSON API)
+  - fargoparks.com (Drupal calendar JSON)
+  - myndsu.ndsu.edu (CampusLabs Engage API — NDSU campus events)
+  - fargodome.com (carbonhouse RSS)
+  - fargotheatre.org (listing scrape)
+  - gobison.com, msumdragons.com, fargoforce.com, gocobbers.com — sports
+    schedules, hidden behind the "Show sports" toggle
 - **Automatic deduplication** - Identifies duplicate events across sources using title/date/location matching
 - Stores events in SQLite database
 - Prevents duplicates with upsert logic
