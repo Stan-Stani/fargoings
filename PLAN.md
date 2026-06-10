@@ -4,6 +4,39 @@ _Last refreshed: 2026-06-10. Current version: v1.1.34._
 
 ## Shipped
 
+- **City module system + SooGoings (2026-06-10):**
+  - **`src/cities/<id>/` modules** — per-city `config.ts` (branding, tz, map
+    center/zoom, region bbox, db path — pure data), `sources.ts`,
+    `fetchers.ts`, `venues.ts`. `CITY` env var picks the city (default
+    `fargo`; unknown value throws). `fetchers/sources.ts` is now a shim over
+    the active city, so `database.ts`/`api.ts` imports were untouched; dedup
+    pairs/health/recurring all derive from the registry as before. Frontend
+    reads branding + map view from new `GET /api/config` at boot (one build
+    artifact serves any city; index.html statics are the Fargo fallback).
+    `WEB_PORT` env added (vite server+preview) so two instances share a box.
+    `reenrich.ts` now uses `buildAllMatches()` — it previously rebuilt
+    matches for only 5 of 17 sources, silently dropping the rest until the
+    next full run (latent-drift bugfix).
+  - **SooGoings (Sioux Falls, SD)** — `CITY=siouxfalls`, db
+    `events-siouxfalls.db`, 9 sources via 3 new config-driven platform
+    fetchers + configs: **experiencesiouxfalls.com** (CVB, Craft CMS; the
+    server-rendered Sprig listing is paginated `?page=N` with `<h2>` date
+    group headers — detail-page `.md` mirrors 404, and the listing cache can
+    serve weeks-stale copies, so a `cb=` cache-buster is mandatory),
+    **dtsf.com / washingtonpavilion.org / levittsiouxfalls.org**
+    (`tribe-rest.ts`), **dennysanfordpremiercenter.com** (`simpleview.ts` —
+    same token+rest_v2 flow as fargomoorhead.org, `defaultLocation` config
+    because the arena leaves `location` empty), **siouxlandlib.org**
+    (`communico.ts`, 6 branches — the WAF 302s-to-google from residential
+    AND datacenter IPs, so `SIOUXLAND_EVENTS_URL` relay is required even
+    locally; `infra/siouxland-feed-worker/` is the relay, deploy blocked on
+    `wrangler login` re-auth), **goaugie.com / usfcougars.com /
+    sfstampede.com** (Sidearm configs). 6 venue rules (Pavilion, Orpheum,
+    Levitt, Premier Center, Convention Center, Falls Park; coords from
+    upstream feeds + Nominatim). **levittsiouxfalls.org 403s the dev
+    machine's IP** (Wordfence-style block after probing) — verify from the
+    VPS; it may need a relay too.
+
 - **Venue coverage + list quality round (2026-06-10):**
   - **7 new sources** (registry pattern, one commit each): **The Aquarium**
     (`aquariumfargo-com.ts`, Tribe REST — apex domain only, www. is WAF-403'd;
@@ -170,10 +203,10 @@ blocked hosts). Platform scouting done 2026-05-15 — ranked by known effort:
   **Red River Zoo** (static S3 WordPress export, no events/calendar page at
   all — scouted 2026-06-10; ticketing is Hornblower).
 
-Per `AGENTS.md`: a new fetcher is one entry in `src/fetchers/sources.ts` +
-one fetch closure in `src/fetchers/registry.ts` (dedup pairs, aliases, and
-the index/refetch wiring are generated from the registry). Optional: venue
-enrichment & coords for the map.
+Per `AGENTS.md`: a new fetcher is one entry in `src/cities/<city>/sources.ts`
++ one fetch closure in `src/cities/<city>/fetchers.ts` (dedup pairs, aliases,
+and the index/refetch wiring are generated from the registry). Optional:
+venue enrichment & coords for the map in `src/cities/<city>/venues.ts`.
 
 ### Phase 2 — Discovery / SEO
 

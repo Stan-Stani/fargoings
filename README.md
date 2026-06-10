@@ -2,6 +2,23 @@
 
 A Node.js/TypeScript event aggregator that fetches and stores events from multiple Fargo-Moorhead area sources, with automatic deduplication.
 
+## City modules
+
+The same codebase powers one deployment per city, selected with the `CITY`
+env var (default `fargo`, so the original deploy is unchanged):
+
+- **Fargoings** (`CITY=fargo`) — Fargo-Moorhead, 17 sources, `./events.db`
+- **SooGoings** (`CITY=siouxfalls`) — Sioux Falls, SD, 9 sources,
+  `./events-siouxfalls.db`
+
+Each city is a directory under `src/cities/<id>/` holding its branding, map
+view, venue rules, and source registry. See AGENTS.md for the layout and the
+new-source recipe. Sioux Falls sources: experiencesiouxfalls.com (CVB listing
+scrape), dtsf.com + washingtonpavilion.org + levittsiouxfalls.org (The Events
+Calendar REST), dennysanfordpremiercenter.com (Simpleview), siouxlandlib.org
+(Communico, via Cloudflare relay), goaugie.com + usfcougars.com +
+sfstampede.com (Sidearm sports).
+
 ## Features
 
 - Aggregates events from **17 sources**:
