@@ -10,6 +10,7 @@ import { FargoUndergroundFetcher } from "../../fetchers/fargounderground-com"
 import { GoCobbersFetcher } from "../../fetchers/gocobbers-com"
 import { MoorheadLibraryFetcher } from "../../fetchers/moorheadlibrary-org"
 import { MyNdsuFetcher } from "../../fetchers/myndsu-ndsu-edu"
+import { ParachigoFetcher } from "../../fetchers/parachigo-com"
 import { SidearmSportsFetcher } from "../../fetchers/sidearm-sports"
 import { WestFargoEventsFetcher } from "../../fetchers/westfargoevents-com"
 import { WestFargoLibraryFetcher } from "../../fetchers/westfargolibrary-org"
@@ -115,5 +116,9 @@ export const FARGO_FETCH_FNS: CityFetchFns = {
     const fetcher = new FargoTheatreFetcher()
     const events = await fetcher.fetchEvents()
     return events.map((event) => fetcher.transformToStoredEvent(event))
+  },
+  "parachigo.com": async () => {
+    const fetcher = new ParachigoFetcher()
+    return fetcher.fetchAll()
   },
 }

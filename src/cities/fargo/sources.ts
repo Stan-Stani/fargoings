@@ -115,4 +115,14 @@ export const FARGO_SOURCE_INFO: SourceInfo[] = [
     dedupPriority: 14,
     fetchHorizonDays: 365,
   },
+  {
+    // Parachigo DIY venue (Square Online store). Events are catalog products
+    // of product_type "event"; the venue's own ticket pages are authoritative
+    // for its shows, so it outranks fargounderground.com in dedup.
+    source: "parachigo.com",
+    aliases: ["parachigo"],
+    sports: false,
+    dedupPriority: 1.5,
+    fetchHorizonDays: 90,
+  },
 ]
