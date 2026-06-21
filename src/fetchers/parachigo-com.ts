@@ -35,7 +35,7 @@ interface Venue {
 }
 
 const PARACHIGO: Venue = {
-  location: "Parachigo, 14 8th St S, Fargo, ND 58102",
+  location: "Parachigo, 14 8th St S, Fargo, ND 58103",
   city: "Fargo",
   latitude: 46.8742,
   longitude: -96.791,
