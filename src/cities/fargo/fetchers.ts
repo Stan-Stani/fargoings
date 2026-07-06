@@ -8,6 +8,7 @@ import { FargoTheatreFetcher } from "../../fetchers/fargotheatre-org"
 import { FargoFetcher } from "../../fetchers/fargomoorhead-com"
 import { FargoUndergroundFetcher } from "../../fetchers/fargounderground-com"
 import { GoCobbersFetcher } from "../../fetchers/gocobbers-com"
+import { LumaFetcher } from "../../fetchers/luma-com"
 import { MoorheadLibraryFetcher } from "../../fetchers/moorheadlibrary-org"
 import { MyNdsuFetcher } from "../../fetchers/myndsu-ndsu-edu"
 import { ParachigoFetcher } from "../../fetchers/parachigo-com"
@@ -119,6 +120,14 @@ export const FARGO_FETCH_FNS: CityFetchFns = {
   },
   "parachigo.com": async () => {
     const fetcher = new ParachigoFetcher()
+    return fetcher.fetchAll()
+  },
+  "luma.com": async () => {
+    const fetcher = new LumaFetcher({
+      sourceId: "luma.com",
+      timeZone: "America/Chicago",
+      calendars: [{ slug: "tempo.fargo", category: "Nightlife" }],
+    })
     return fetcher.fetchAll()
   },
 }

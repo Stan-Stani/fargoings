@@ -125,4 +125,18 @@ export const FARGO_SOURCE_INFO: SourceInfo[] = [
     dedupPriority: 1.5,
     fetchHorizonDays: 90,
   },
+  {
+    // Luma calendars of local organizers (currently TEMPO, the dark
+    // dance-night collective behind GOTH CHURCH). The organizer's own
+    // RSVP/ticket page beats blog listings, so it sits above
+    // fargounderground.com (2) — the higher dedupPriority survives a
+    // cross-source match. The future feed lists everything announced, and a
+    // niche calendar is legitimately empty between parties.
+    source: "luma.com",
+    aliases: ["luma", "tempo", "gothchurch"],
+    sports: false,
+    dedupPriority: 2.5,
+    allowEmpty: true,
+    fetchHorizonDays: 365,
+  },
 ]
