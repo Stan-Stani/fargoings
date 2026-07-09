@@ -14,6 +14,12 @@ async function main() {
   const db = new EventDatabase()
 
   try {
+    // Null out junk locations (bare state/zip) stored before ingest cleaning
+    const junkCleared = db.clearJunkLocations()
+    if (junkCleared > 0) {
+      console.log(`🧹 Cleared ${junkCleared} junk locations\n`)
+    }
+
     // Re-apply venue rules to all title-matching events (overwrites stale data)
     const enrichedCount = db.reapplyVenueLocations()
     console.log(
