@@ -1,4 +1,5 @@
 import { decodeHtmlEntities } from "../dedup/normalize"
+import { isJunkLocation } from "../enrichment/venues"
 import { slugify, utcInstantToLocal } from "./shared"
 
 /** One parsed VEVENT, reduced to the fields the fetchers consume. */
@@ -168,5 +169,8 @@ export function cleanICalLocation(value: string | undefined): string | null {
     .replace(/\s+/g, " ")
     .replace(/\s+-\s+/, ", ")
     .trim()
-  return text.length ? text : null
+  // A bare state/zip/country (venue record with no venue in it) is worse than
+  // no location: the web UI would group same-day events under e.g. "ND".
+  if (!text.length || isJunkLocation(text)) return null
+  return text
 }

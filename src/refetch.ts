@@ -1,5 +1,6 @@
 import "dotenv/config"
 import { EventDatabase } from "./db/database"
+import { enrichVenuesFromEventPages } from "./enrichment/pages"
 import {
   buildAllMatches,
   persistMatches,
@@ -98,11 +99,25 @@ async function main() {
       await runSource(db, def, { force: true, today })
     }
 
+    // Null out junk locations (bare state/zip) stored before ingest cleaning
+    const junkCleared = db.clearJunkLocations()
+    if (junkCleared > 0) {
+      console.log(`🧹 Cleared ${junkCleared} junk locations\n`)
+    }
+
     // Enrich events with known venue locations where data is missing
     const enrichedCount = db.enrichVenueLocations()
     if (enrichedCount > 0) {
       console.log(
         `🏛️  Enriched ${enrichedCount} events with known venue locations\n`,
+      )
+    }
+
+    // Locationless events whose pages link out to a known venue's website
+    const pageEnriched = await enrichVenuesFromEventPages(db, today)
+    if (pageEnriched > 0) {
+      console.log(
+        `🔗 Enriched ${pageEnriched} events from venue links on their pages\n`,
       )
     }
 

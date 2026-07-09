@@ -1,5 +1,6 @@
 import Database from "better-sqlite3"
 import { decodeHtmlEntities, normalizeText } from "../dedup/normalize"
+import { isJunkLocation, VenueRule } from "../enrichment/venues"
 import {
   ALLOW_EMPTY_SOURCES,
   SOURCE_INFO,
@@ -1183,6 +1184,75 @@ export class EventDatabase {
     })
     transaction()
     return count
+  }
+
+  /**
+   * Null out stored locations that are pure geographic filler (see
+   * isJunkLocation), e.g. the bare "ND" that fargounderground.com's iCal feed
+   * exports for venue records with only the state set. New rows are already
+   * cleaned at ingest (cleanICalLocation); this catches rows stored before
+   * that cleaning existed, which upserts alone never fix because the upsert
+   * COALESCE-preserves the old location when the incoming one is null.
+   * Returns the number of rows cleared.
+   */
+  clearJunkLocations(): number {
+    const rows = this.db
+      .prepare("SELECT DISTINCT location FROM events WHERE location IS NOT NULL")
+      .all() as { location: string }[]
+
+    const clearStmt = this.db.prepare(`
+      UPDATE events
+      SET location = NULL, updatedAt = CURRENT_TIMESTAMP
+      WHERE location = ?
+    `)
+
+    let count = 0
+    const transaction = this.db.transaction(() => {
+      for (const { location } of rows) {
+        if (isJunkLocation(location)) {
+          count += clearStmt.run(location).changes
+        }
+      }
+    })
+    transaction()
+    return count
+  }
+
+  /**
+   * Upcoming events with no location — the candidates for page-based venue
+   * enrichment (src/enrichment/pages.ts). `today` is a local YYYY-MM-DD.
+   */
+  getLocationlessUpcomingEvents(
+    today: string,
+  ): { eventId: string; url: string }[] {
+    return this.db
+      .prepare(
+        `SELECT eventId, url FROM events
+         WHERE location IS NULL AND url IS NOT NULL AND url != '' AND date >= ?
+         ORDER BY date ASC`,
+      )
+      .all(today) as { eventId: string; url: string }[]
+  }
+
+  /** Apply one venue rule's location/city/coords to a single event. */
+  applyVenueRule(eventId: string, rule: VenueRule): void {
+    this.db
+      .prepare(
+        `UPDATE events
+         SET location = @location,
+             city = @city,
+             latitude = @latitude,
+             longitude = @longitude,
+             updatedAt = CURRENT_TIMESTAMP
+         WHERE eventId = @eventId`,
+      )
+      .run({
+        location: rule.location,
+        city: rule.city,
+        latitude: rule.latitude,
+        longitude: rule.longitude,
+        eventId,
+      })
   }
 
   /**
