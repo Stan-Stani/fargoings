@@ -129,7 +129,12 @@ export class DowntownFargoFetcher {
     const endDate = endDatePart
 
     return {
-      eventId: `dtf_${event.url.replace("/events/", "")}`,
+      // The URL slug is shared by every occurrence of a recurring event
+      // (the feed returns each occurrence as a separate entry with the
+      // same url), so the occurrence date must be part of the identity —
+      // otherwise the latest occurrence in the fetch window upserts over
+      // the nearer ones. Migration 5 rewrites pre-existing rows to match.
+      eventId: `dtf_${event.url.replace("/events/", "")}_${date}`,
       title: event.title,
       url: `https://www.downtownfargo.com${event.url}`,
       location: event.location || null,

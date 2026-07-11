@@ -291,6 +291,37 @@ export class EventDatabase {
         this.db.pragma("user_version = 4")
       })()
     }
+
+    if (version < 5) {
+      // downtownfargo eventIds now embed the occurrence date
+      // (dtf_<slug>_<YYYY-MM-DD>) because the source reuses one URL for
+      // every occurrence of a recurring event — with slug-only ids the
+      // latest occurrence in the fetch window overwrote the nearer ones.
+      // Rewrite existing rows to the new scheme so the next fetch upserts
+      // onto them instead of inserting duplicates. Matches go first: the
+      // rewrite joins events on the old ids. (Every dtf_ row is slug-only
+      // at this point — the migration runs before the new fetcher can
+      // write.) OR IGNORE covers the degenerate case of a match row whose
+      // rewritten pair already exists. FK checks must wait for commit:
+      // mid-transaction, matches point at parent ids that don't exist yet.
+      this.db.transaction(() => {
+        this.db.pragma("defer_foreign_keys = ON")
+        for (const col of ["eventId1", "eventId2"]) {
+          this.db.exec(`
+            UPDATE OR IGNORE event_matches
+               SET ${col} = (SELECT e.eventId || '_' || e.date
+                               FROM events e WHERE e.eventId = ${col})
+             WHERE ${col} GLOB 'dtf_*'
+               AND EXISTS (SELECT 1 FROM events e WHERE e.eventId = ${col})
+          `)
+        }
+        this.db.exec(`
+          UPDATE events SET eventId = eventId || '_' || date
+           WHERE source = 'downtownfargo.com'
+        `)
+        this.db.pragma("user_version = 5")
+      })()
+    }
   }
 
   /** First category name from the categories JSON, decoded, or null. */
