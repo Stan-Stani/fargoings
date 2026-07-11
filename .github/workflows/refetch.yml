@@ -1,0 +1,30 @@
+name: Refetch Sources
+# Manually re-fetch event sources on the VPS without waiting for the
+# weekly cron — e.g. right after a fetcher fix deploys.
+on:
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: "Source ids/aliases to refetch (space-separated; empty = all)"
+        required: false
+        default: ""
+      instance:
+        description: "Instance checkout to refetch"
+        type: choice
+        options: [fargoings, soogoings]
+        default: fargoings
+jobs:
+  refetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refetch on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            cd "/root/${{ inputs.instance }}"
+            npm run refetch -- ${{ inputs.sources }}
