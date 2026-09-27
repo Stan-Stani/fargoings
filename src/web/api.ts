@@ -78,7 +78,13 @@ function sendJson(
   status: number,
   payload: unknown,
 ) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" })
+  // no-store: the "today"/"week" presets resolve against the current date,
+  // so a cached response goes stale at midnight (a scheduled digest once
+  // got Thursday's events back on Friday morning).
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  })
   res.end(JSON.stringify(payload))
 }
 
@@ -89,6 +95,7 @@ interface EventFilters {
   dateFrom: string
   dateTo: string
   includeSports: boolean
+  includeCampus: boolean
   collapseRepeats: boolean
 }
 
@@ -105,6 +112,8 @@ function parseEventFilters(searchParams: URLSearchParams): EventFilters {
     dateFrom,
     dateTo,
     includeSports: searchParams.get("sports") === "show",
+    // Student-life calendars/homecomings, hidden like sports (`campus=show`).
+    includeCampus: searchParams.get("campus") === "show",
     // Recurring series collapse to their next occurrence unless the client
     // opts into seeing every date (`repeats=all`).
     collapseRepeats: searchParams.get("repeats") !== "all",
@@ -178,6 +187,7 @@ async function main() {
         filters.dateTo,
         filters.includeSports,
         filters.collapseRepeats,
+        filters.includeCampus,
       )
       const totalPages = Math.max(1, Math.ceil(result.total / pageSize))
 
@@ -198,6 +208,10 @@ async function main() {
         page,
         pageSize,
         totalPages,
+        // Resolved range (presets expand server-side in the city's time
+        // zone) so API consumers can confirm which day they got.
+        dateFrom: filters.dateFrom || null,
+        dateTo: filters.dateTo || null,
       })
       return
     }
@@ -217,6 +231,7 @@ async function main() {
         filters.dateTo,
         filters.includeSports,
         filters.collapseRepeats,
+        filters.includeCampus,
       )
 
       // Coordinates far outside the city's region are upstream geocoding

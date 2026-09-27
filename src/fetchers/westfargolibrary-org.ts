@@ -103,6 +103,19 @@ export class WestFargoLibraryFetcher {
     return location
   }
 
+  /**
+   * Staff prefix titles with the time ("10:30 a.m. Baby Boost Storytime",
+   * "1 - 2 p.m. Page Turners Book Club") — redundant with startTime and it
+   * breaks alphabetical sorting and dedup, so strip it.
+   */
+  static stripTimePrefix(title: string): string {
+    const stripped = title.replace(
+      /^(\d{1,2}(:\d{2})?\s*([ap]\.?\s?m\.?)?\s*[-–]\s*)?\d{1,2}(:\d{2})?\s*[ap]\.?\s?m\.?\s+/i,
+      "",
+    )
+    return stripped || title
+  }
+
   transformToStoredEvent(
     event: WestFargoLibraryEvent,
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
@@ -110,7 +123,7 @@ export class WestFargoLibraryFetcher {
       // Recurring entries reuse one UID across dates, so the date is part of
       // the key — otherwise the upsert collapses every occurrence into one row.
       eventId: `wfpl_${event.uid}_${event.date}`,
-      title: event.title,
+      title: WestFargoLibraryFetcher.stripTimePrefix(event.title),
       url: `${this.eventDetailBase}${event.uid}`,
       location: this.canonicalizeLocation(event.location),
       date: event.date,

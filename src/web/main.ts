@@ -68,6 +68,8 @@ let sortByCategoryWithinDay = false
 let timeSortDir: "asc" | "desc" = "asc"
 const showSportsStorageKey = "showSports"
 let showSports = localStorage.getItem(showSportsStorageKey) === "1"
+const showCampusStorageKey = "showCampus"
+let showCampus = localStorage.getItem(showCampusStorageKey) === "1"
 // Recurring series are collapsed to their next occurrence by default; this
 // toggle opts into seeing every date.
 const showRepeatsStorageKey = "showRepeats"
@@ -174,6 +176,9 @@ const categoryFilterEl = document.getElementById(
 ) as HTMLSelectElement
 const showSportsToggleEl = document.getElementById(
   "showSportsToggle",
+) as HTMLInputElement
+const showCampusToggleEl = document.getElementById(
+  "showCampusToggle",
 ) as HTMLInputElement
 const showRepeatsToggleEl = document.getElementById(
   "showRepeatsToggle",
@@ -576,6 +581,7 @@ async function loadMapEvents(): Promise<void> {
   if (categoryFilter) params.set("category", categoryFilter)
   if (datePreset && datePreset !== "all") params.set("preset", datePreset)
   if (showSports) params.set("sports", "show")
+  if (showCampus) params.set("campus", "show")
   if (showRepeats) params.set("repeats", "all")
 
   try {
@@ -1150,6 +1156,7 @@ async function load(mode: "replace" | "append" = "replace"): Promise<void> {
   if (categoryFilter) params.set("category", categoryFilter)
   if (datePreset && datePreset !== "all") params.set("preset", datePreset)
   if (showSports) params.set("sports", "show")
+  if (showCampus) params.set("campus", "show")
   if (showRepeats) params.set("repeats", "all")
 
   try {
@@ -1321,6 +1328,13 @@ showSportsToggleEl.checked = showSports
 showSportsToggleEl.addEventListener("change", () => {
   showSports = showSportsToggleEl.checked
   localStorage.setItem(showSportsStorageKey, showSports ? "1" : "0")
+  applyFiltersChanged()
+})
+
+showCampusToggleEl.checked = showCampus
+showCampusToggleEl.addEventListener("change", () => {
+  showCampus = showCampusToggleEl.checked
+  localStorage.setItem(showCampusStorageKey, showCampus ? "1" : "0")
   applyFiltersChanged()
 })
 

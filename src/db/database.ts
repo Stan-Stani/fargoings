@@ -3,9 +3,16 @@ import { decodeHtmlEntities, normalizeText } from "../dedup/normalize"
 import { isJunkLocation, VenueRule } from "../enrichment/venues"
 import {
   ALLOW_EMPTY_SOURCES,
+  CAMPUS_SOURCES,
+  CAMPUS_TITLE_PATTERNS,
   SOURCE_INFO,
   SPORTS_SOURCES,
 } from "../fetchers/sources"
+import {
+  fallbackCategory,
+  inferCategory,
+  pickCategory,
+} from "../enrichment/categories"
 import { StoredEvent } from "../types/event"
 import { getActiveCity } from "../cities"
 
@@ -324,39 +331,42 @@ export class EventDatabase {
     }
   }
 
-  /** First category name from the categories JSON, decoded, or null. */
+  /**
+   * Display category from the categories JSON: the first name that says
+   * what the event *is* (see pickCategory — audience/admin tags like
+   * "College" or "Registration Required" are skipped), or null.
+   */
   private extractCategory(categoriesRaw: string | null): string | null {
+    return pickCategory(this.extractCategoryNames(categoriesRaw))
+  }
+
+  /** Every category name in the categories JSON, decoded, in order. */
+  private extractCategoryNames(categoriesRaw: string | null): string[] {
     if (!categoriesRaw) {
-      return null
+      return []
     }
 
     try {
       const parsed = JSON.parse(categoriesRaw) as unknown
+      if (!Array.isArray(parsed)) return []
 
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const first = parsed[0]
-
-        if (typeof first === "string") {
-          return decodeHtmlEntities(first)
-        }
-
-        if (first && typeof first === "object") {
-          const record = first as Record<string, unknown>
-
+      const names: string[] = []
+      for (const item of parsed) {
+        if (typeof item === "string") {
+          names.push(decodeHtmlEntities(item))
+        } else if (item && typeof item === "object") {
+          const record = item as Record<string, unknown>
           if (typeof record.catName === "string") {
-            return decodeHtmlEntities(record.catName)
-          }
-
-          if (typeof record.name === "string") {
-            return decodeHtmlEntities(record.name)
+            names.push(decodeHtmlEntities(record.catName))
+          } else if (typeof record.name === "string") {
+            names.push(decodeHtmlEntities(record.name))
           }
         }
       }
+      return names
     } catch {
-      return decodeHtmlEntities(categoriesRaw)
+      return [decodeHtmlEntities(categoriesRaw)]
     }
-
-    return null
   }
 
   /**
@@ -375,6 +385,31 @@ export class EventDatabase {
     )
     for (const row of rows) {
       update.run(this.extractCategory(row.categories), row.categories)
+    }
+
+    // Sources that publish no usable category (downtownfargo.com, the
+    // Aquarium, …) get one inferred from the title so they show up under
+    // category filters instead of as "N/A". Rows whose only upstream names
+    // are audience tags ("College") fall back to the first non-admin tag
+    // when the title says nothing either.
+    const uncategorized = this.db
+      .prepare(
+        "SELECT id, title, location, categories FROM display_events WHERE category IS NULL",
+      )
+      .all() as {
+      id: number
+      title: string
+      location: string | null
+      categories: string | null
+    }[]
+    const setCategory = this.db.prepare(
+      "UPDATE display_events SET category = ? WHERE id = ?",
+    )
+    for (const row of uncategorized) {
+      const category =
+        inferCategory(row.title, row.location) ??
+        fallbackCategory(this.extractCategoryNames(row.categories))
+      if (category) setCategory.run(category, row.id)
     }
   }
 
@@ -1038,37 +1073,14 @@ export class EventDatabase {
     return stmt.all(todayInFargo, limit, offset) as DisplayEvent[]
   }
 
+  /** Categories actually shown on current rows (feeds the filter dropdown). */
   getDistinctCategories(): string[] {
     const rows = this.db
       .prepare(
-        "SELECT DISTINCT categories FROM display_events WHERE categories IS NOT NULL AND categories != '[]'",
+        "SELECT DISTINCT category FROM display_events WHERE category IS NOT NULL ORDER BY category COLLATE NOCASE",
       )
-      .all() as { categories: string }[]
-
-    const names = new Set<string>()
-    for (const row of rows) {
-      try {
-        const parsed = JSON.parse(row.categories) as unknown
-        if (Array.isArray(parsed)) {
-          for (const item of parsed) {
-            if (item && typeof item === "object") {
-              const rec = item as Record<string, unknown>
-              if (typeof rec.catName === "string" && rec.catName) {
-                names.add(rec.catName)
-              }
-            } else if (typeof item === "string" && item) {
-              names.add(item)
-            }
-          }
-        }
-      } catch {
-        // skip unparseable rows
-      }
-    }
-
-    return Array.from(names).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    )
+      .all() as { category: string }[]
+    return rows.map((row) => row.category)
   }
 
   getDisplayCount(): number {
@@ -1089,6 +1101,7 @@ export class EventDatabase {
     dateTo: string = "",
     includeSports: boolean = false,
     collapseRepeats: boolean = false,
+    includeCampus: boolean = false,
   ): DisplayEventQueryResult {
     const normalizedQuery = searchQuery.trim().toLowerCase()
     const normalizedCategory = category.trim().toLowerCase()
@@ -1120,8 +1133,12 @@ export class EventDatabase {
     }
 
     if (normalizedCategory) {
-      conditions.push("lower(coalesce(categories, '')) LIKE ?")
-      params.push(`%${normalizedCategory}%`)
+      // The display category may be inferred (not in the raw JSON), so match
+      // it exactly as well as substring-matching the upstream names.
+      conditions.push(
+        "(lower(coalesce(category, '')) = ? OR lower(coalesce(categories, '')) LIKE ?)",
+      )
+      params.push(normalizedCategory, `%${normalizedCategory}%`)
     }
 
     // Sports schedules (college athletics, etc.) are high-volume and would
@@ -1132,6 +1149,21 @@ export class EventDatabase {
         `source NOT IN (${SPORTS_SOURCES.map(() => "?").join(", ")})`,
       )
       params.push(...SPORTS_SOURCES)
+    }
+
+    // Student-life calendars and homecomings are aimed at enrolled students;
+    // hidden unless the "Show campus" toggle is on.
+    if (!includeCampus) {
+      if (CAMPUS_SOURCES.length > 0) {
+        conditions.push(
+          `source NOT IN (${CAMPUS_SOURCES.map(() => "?").join(", ")})`,
+        )
+        params.push(...CAMPUS_SOURCES)
+      }
+      for (const pattern of CAMPUS_TITLE_PATTERNS) {
+        conditions.push("lower(title) NOT LIKE ?")
+        params.push(pattern)
+      }
     }
 
     // Collapse a recurring series to its next occurrence *within the

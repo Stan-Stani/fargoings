@@ -18,6 +18,12 @@ export interface SourceInfo {
    */
   sports: boolean
   /**
+   * Campus/student-life calendars (student orgs, thesis workshops, career
+   * fairs) — aimed at enrolled students, so hidden behind the "Show campus"
+   * toggle like sports. Omitted = false.
+   */
+  campus?: boolean
+  /**
    * Total order for cross-source dedup: when two sources list the same
    * event, the row from the LOWER-priority source is dropped (its URL is
    * kept as altUrl on the surviving row).

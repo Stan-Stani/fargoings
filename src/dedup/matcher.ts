@@ -34,9 +34,38 @@ const DEFAULT_WEIGHTS: MatchWeights = {
 };
 
 /**
+ * The headliner part of a show title: drops a leading "X presents", and
+ * everything from the first support-act / venue connector (" w/ ", " with ",
+ * " at ", " featuring ", ":", " - ") on, plus trailing ticket notes like
+ * "*All Ages*". Venues and promoters word the same show differently —
+ * "KING 810 w/ Guerilla Warfare at The Aquarium" (downtownfargo.com) vs
+ * "Metro Concerts presents King 810 *All Ages*" (aquariumfargo.com) — and
+ * both reduce to "king 810".
+ */
+export function headlinerCore(title: string): string {
+  return normalizeText(title)
+    .replace(/^.*?\bpresents?:?\s+/, '')
+    .replace(/\*[^*]*\*/g, ' ')
+    .replace(/\((all ages|21\+|18\+|sold out)\)/g, ' ')
+    .split(/\s+(?:w\/|with|at|featuring|feat\.?|ft\.?|\+|&)\s+|\s*[:|]\s*|\s+-\s+/)[0]
+    .replace(/[^\w\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Calculate title similarity score (0-1)
  */
 function scoreTitles(title1: string, title2: string): { score: number; reason: string } {
+  // Same headliner, differently dressed (promoter prefix, support acts,
+  // venue suffix). Requires a non-trivial core so "Trivia at X" vs
+  // "Trivia with Y" can't merge on a one-word generic title.
+  const core1 = headlinerCore(title1);
+  const core2 = headlinerCore(title2);
+  if (core1 && core1 === core2 && core1.length >= 6 && core1.includes(' ')) {
+    return { score: 0.9, reason: `same headliner ("${core1}")` };
+  }
+
   // Check for substring containment first
   if (containsSubstring(title1, title2)) {
     const shorter = title1.length < title2.length ? title1 : title2;

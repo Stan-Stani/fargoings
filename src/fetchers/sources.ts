@@ -21,6 +21,20 @@ export const SPORTS_SOURCES = SOURCE_INFO.filter((s) => s.sports).map(
   (s) => s.source,
 )
 
+/**
+ * Campus/student-life sources — hidden from the main feed by default,
+ * revealed via the "Show campus" toggle.
+ */
+export const CAMPUS_SOURCES = SOURCE_INFO.filter((s) => s.campus).map(
+  (s) => s.source,
+)
+
+/**
+ * Student-geared events that general-audience sources also list
+ * (homecomings). Matched on title and hidden alongside CAMPUS_SOURCES.
+ */
+export const CAMPUS_TITLE_PATTERNS = ["%homecoming%"]
+
 /** Sources whose 0-event runs are expected (seasonal feeds), not failures. */
 export const ALLOW_EMPTY_SOURCES = SOURCE_INFO.filter((s) => s.allowEmpty).map(
   (s) => s.source,

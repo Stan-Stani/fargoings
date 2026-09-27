@@ -79,6 +79,7 @@ export const FARGO_SOURCE_INFO: SourceInfo[] = [
     source: "myndsu.ndsu.edu",
     aliases: ["ndsucampus", "myndsu"],
     sports: false,
+    campus: true,
     dedupPriority: 12,
   },
   {
