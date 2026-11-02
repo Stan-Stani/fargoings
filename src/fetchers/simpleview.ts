@@ -202,7 +202,12 @@ export class SimpleviewFetcher {
       date,
       startTime,
       startDate: this.toDateOnly(event.startDate),
-      endDate: this.toDateOnly(event.endDate || event.startDate),
+      // startDate/endDate span a whole recurrence; only a daily recurrence
+      // (recurType 1) is one continuous run.
+      endDate:
+        event.recurType === 1
+          ? this.toDateOnly(event.endDate || event.startDate)
+          : date,
       latitude: event.latitude || null,
       longitude: event.longitude || null,
       city: event.city || this.config.defaultCity,

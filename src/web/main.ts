@@ -4,6 +4,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css"
 import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 import { createElement, Moon, SlidersHorizontal, Sun, SunMoon, X } from "lucide"
 import { decode } from "he"
+import { LOCATION_SEE_LINK } from "../enrichment/venues"
 
 type EventItem = {
   title: string
@@ -17,8 +18,10 @@ type EventItem = {
   altUrl: string | null
   latitude: number | null
   longitude: number | null
-  recurringCadence: "weekly" | "biweekly" | null
+  recurringCadence: "daily" | "weekly" | "biweekly" | null
   recurringCount: number | null
+  ongoingThrough: string | null
+  timeLabel: string | null
   possiblyCancelled: boolean
 }
 
@@ -364,6 +367,15 @@ function formatDayLabel(date: string): string {
     month: "long",
     day: "numeric",
     year: "numeric",
+  })
+}
+
+/** "2027-01-31" → "Jan 31". */
+function formatShortDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
   })
 }
 
@@ -739,7 +751,16 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
   titleText.textContent = item.title
   titleTd.appendChild(titleText)
 
-  if (item.recurringCadence) {
+  // A multi-day run: one row stands in for all of it. Without an end date the
+  // run reaches past what the source has told us about.
+  if (item.ongoingThrough || item.recurringCadence === "daily") {
+    const chip = document.createElement("span")
+    chip.className = "recurring-chip"
+    chip.textContent = item.ongoingThrough
+      ? `through ${formatShortDate(item.ongoingThrough)}`
+      : "ongoing"
+    titleTd.appendChild(chip)
+  } else if (item.recurringCadence) {
     const chip = document.createElement("span")
     chip.className = "recurring-chip"
     // Collapsed mode shows one row standing in for the series; show-all mode
@@ -771,7 +792,7 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
   dayPart.className = "datetime-day"
   dayPart.textContent = formatDay(item.date)
   dateTd.appendChild(dayPart)
-  const timeText = formatTime(item.startTime)
+  const timeText = formatTime(item.startTime) || item.timeLabel
   if (timeText) {
     dateTd.appendChild(document.createTextNode(" "))
     const timeEl = document.createElement("span")
@@ -783,7 +804,9 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
   const locationTd = document.createElement("td")
   locationTd.setAttribute("data-label", "Location")
   locationTd.className = "location-cell"
-  if (item.location) {
+  if (item.location === LOCATION_SEE_LINK) {
+    locationTd.textContent = item.location
+  } else if (item.location) {
     const mapsQuery = encodeURIComponent(
       item.city ? `${item.location}, ${item.city}` : item.location,
     )
@@ -849,7 +872,7 @@ function buildEventRow(item: EventItem): HTMLTableRowElement {
 }
 
 function venueGroupKey(item: EventItem): string | null {
-  if (!item.location) return null
+  if (!item.location || item.location === LOCATION_SEE_LINK) return null
   return `${item.date}|${item.location}`
 }
 

@@ -3,6 +3,13 @@ export interface FargoEvent {
   title: string;
   url: string;
   location?: string;
+  address1?: string;
+  address2?: string;
+  state?: string;
+  zip?: string;
+  /** Free text, e.g. "From: 5:00 PM to 8:00 PM". */
+  times?: string;
+  description?: string;
   date: string;
   startDate: string;
   endDate: string;

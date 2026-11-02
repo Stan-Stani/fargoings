@@ -148,6 +148,12 @@ async function main() {
       return
     }
 
+    if (pathname === "/api/health/data-quality") {
+      // Read by people, not monitors: what the pipeline couldn't fix itself.
+      sendJson(res, 200, db.getDataQualityReport())
+      return
+    }
+
     if (pathname === "/api/config") {
       // Per-deployment city identity for the frontend (branding, map view).
       // One build artifact serves any city; main.ts falls back to Fargo
@@ -202,6 +208,9 @@ async function main() {
           longitude: row.longitude ?? null,
           recurringCadence: row.recurringCadence ?? null,
           recurringCount: row.recurringCount ?? null,
+          ongoingThrough: row.ongoingThrough ?? null,
+          // Sources rarely say which of the two it is.
+          timeLabel: row.startTime ? null : "All day / time TBA",
           possiblyCancelled: row.possiblyCancelled === 1,
         })),
         total: result.total,

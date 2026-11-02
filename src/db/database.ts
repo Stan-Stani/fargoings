@@ -1,6 +1,10 @@
 import Database from "better-sqlite3"
 import { decodeHtmlEntities, normalizeText } from "../dedup/normalize"
-import { isJunkLocation, VenueRule } from "../enrichment/venues"
+import {
+  isJunkLocation,
+  VenueRule,
+  venueRuleMatches,
+} from "../enrichment/venues"
 import {
   ALLOW_EMPTY_SOURCES,
   CAMPUS_SOURCES,
@@ -9,10 +13,16 @@ import {
   SPORTS_SOURCES,
 } from "../fetchers/sources"
 import {
-  fallbackCategory,
-  inferCategory,
-  pickCategory,
+  HIDDEN_BY_DEFAULT,
+  isCanonicalCategory,
+  isKnownUpstreamTag,
+  resolveCategory,
 } from "../enrichment/categories"
+import {
+  cleanTitle,
+  normalizeLocation,
+  staleTitleYear,
+} from "../enrichment/normalize"
 import { StoredEvent } from "../types/event"
 import { getActiveCity } from "../cities"
 
@@ -41,7 +51,7 @@ export interface DisplayEvent {
   city: string | null
   imageUrl: string | null
   categories: string
-  /** First category name, decoded — precomputed at rebuild time for the API. */
+  /** Canonical category (see resolveCategory), computed at rebuild time. */
   category: string | null
   source: string
   latitude: number | null
@@ -52,7 +62,9 @@ export interface DisplayEvent {
   recurringGroup: string | null
   /** Distinct upcoming dates in the series (within the stored window). */
   recurringCount: number | null
-  recurringCadence: "weekly" | "biweekly" | null
+  recurringCadence: "daily" | "weekly" | "biweekly" | null
+  /** Last day of a multi-day run, when known (see tagOngoingEvents). */
+  ongoingThrough: string | null
   createdAt: string
   updatedAt: string
 }
@@ -73,6 +85,29 @@ export interface SourceRunRecord {
   startedAt: string | null
 }
 
+export interface EventIssue {
+  source: string
+  title: string
+  date: string
+  url: string
+}
+
+/** Things worth a human look. See getDataQualityReport. */
+export interface DataQualityReport {
+  /** Upcoming events with no venue, except Fargo Parks (which marks its own). */
+  missingLocation: EventIssue[]
+  /** Held out of the feed: the title names a year before the event's. */
+  heldForReview: (EventIssue & { reason: string })[]
+  /** Upcoming events no rule could categorize. */
+  uncategorized: EventIssue[]
+  /** Must stay empty: categories outside CANONICAL_CATEGORIES. */
+  nonCanonicalCategories: string[]
+  /** Upstream tags missing from the mapping tables. */
+  unmappedTags: { source: string; tag: string; count: number }[]
+  /** Upcoming events shown as "All day / time TBA", per source. */
+  missingStartTime: { source: string; count: number }[]
+}
+
 export interface SourceHealth {
   source: string
   lastRunAt: string | null
@@ -84,6 +119,12 @@ export interface SourceHealth {
   flagged: boolean
   flagReasons: string[]
 }
+
+/**
+ * An event spanning this many days or more is a multi-day run. One day isn't
+ * enough: a late show ending after midnight has endDate = date + 1.
+ */
+const MIN_RUN_DAYS = 2
 
 export class EventDatabase {
   private db: Database.Database
@@ -329,15 +370,51 @@ export class EventDatabase {
         this.db.pragma("user_version = 5")
       })()
     }
+
+    if (version < 6) {
+      // Canonical categories, cleaned titles and locations, the venue table,
+      // stale-title holds and multi-day runs. Rebuilt here so prod is right
+      // as soon as this deploys. Merges that depend on the cleaned data need
+      // a dedup pass (`npm run dedup`), which the next fetch also does.
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE display_events ADD COLUMN endDate TEXT;
+          ALTER TABLE display_events ADD COLUMN ongoingThrough TEXT;
+        `)
+        this.normalizeStoredEvents()
+        this.enrichVenueLocations()
+        // These rows' endDate is the end of a whole recurrence (a weekly
+        // trivia night "through April"). The fetcher now only sets a real end
+        // for continuous runs, and the next fetch restores those.
+        this.db.exec(
+          "UPDATE events SET endDate = date WHERE source = 'fargomoorhead.org'",
+        )
+        this.rebuildDisplayEvents()
+        this.db.pragma("user_version = 6")
+      })()
+    }
   }
 
-  /**
-   * Display category from the categories JSON: the first name that says
-   * what the event *is* (see pickCategory — audience/admin tags like
-   * "College" or "Registration Required" are skipped), or null.
-   */
-  private extractCategory(categoriesRaw: string | null): string | null {
-    return pickCategory(this.extractCategoryNames(categoriesRaw))
+  /** Apply cleanTitle/normalizeLocation to rows stored before they existed. */
+  private normalizeStoredEvents(): void {
+    const rows = this.db
+      .prepare("SELECT id, title, location, date FROM events")
+      .all() as {
+      id: number
+      title: string
+      location: string | null
+      date: string
+    }[]
+    const update = this.db.prepare(
+      "UPDATE events SET title = ?, location = ? WHERE id = ?",
+    )
+    for (const row of rows) {
+      const location = row.location && normalizeLocation(row.location)
+      const title = cleanTitle(row.title, { date: row.date, location })
+      if (title !== row.title || location !== row.location) {
+        update.run(title, location, row.id)
+      }
+    }
   }
 
   /** Every category name in the categories JSON, decoded, in order. */
@@ -370,46 +447,51 @@ export class EventDatabase {
   }
 
   /**
-   * Set display_events.category from the categories JSON. One UPDATE per
-   * distinct categories string, so this touches far fewer rows than a
-   * per-row pass. Callers run it inside their own transaction.
+   * Set display_events.category for every row. Tags from rows that dedup
+   * merged into this one count too, so a survivor from a source with no tags
+   * (downtownfargo.com) keeps what the dropped copy knew. Callers run this
+   * inside their own transaction.
    */
   private populateDisplayCategories(): void {
-    const rows = this.db
+    const mergedNames = new Map<string, string[]>()
+    const merged = this.db
       .prepare(
-        "SELECT DISTINCT categories FROM display_events WHERE categories IS NOT NULL",
+        `SELECT m.eventId2 AS kept, e.categories AS categories
+         FROM event_matches m
+         JOIN events e ON e.eventId = m.eventId1
+         WHERE m.confidence IN ('high', 'medium')`,
       )
-      .all() as { categories: string }[]
-    const update = this.db.prepare(
-      "UPDATE display_events SET category = ? WHERE categories = ?",
-    )
-    for (const row of rows) {
-      update.run(this.extractCategory(row.categories), row.categories)
+      .all() as { kept: string; categories: string | null }[]
+    for (const row of merged) {
+      const names = mergedNames.get(row.kept) ?? []
+      names.push(...this.extractCategoryNames(row.categories))
+      mergedNames.set(row.kept, names)
     }
 
-    // Sources that publish no usable category (downtownfargo.com, the
-    // Aquarium, …) get one inferred from the title so they show up under
-    // category filters instead of as "N/A". Rows whose only upstream names
-    // are audience tags ("College") fall back to the first non-admin tag
-    // when the title says nothing either.
-    const uncategorized = this.db
+    const rows = this.db
       .prepare(
-        "SELECT id, title, location, categories FROM display_events WHERE category IS NULL",
+        "SELECT id, eventId, title, location, categories, source FROM display_events",
       )
       .all() as {
       id: number
+      eventId: string
       title: string
       location: string | null
       categories: string | null
+      source: string
     }[]
-    const setCategory = this.db.prepare(
+    const update = this.db.prepare(
       "UPDATE display_events SET category = ? WHERE id = ?",
     )
-    for (const row of uncategorized) {
-      const category =
-        inferCategory(row.title, row.location) ??
-        fallbackCategory(this.extractCategoryNames(row.categories))
-      if (category) setCategory.run(category, row.id)
+    for (const row of rows) {
+      const category = resolveCategory({
+        title: row.title,
+        location: row.location,
+        source: row.source,
+        names: this.extractCategoryNames(row.categories),
+        mergedNames: mergedNames.get(row.eventId),
+      })
+      update.run(category, row.id)
     }
   }
 
@@ -519,15 +601,19 @@ export class EventDatabase {
         lastSeenAt = CURRENT_TIMESTAMP
     `)
 
+    const date = this.normalizeDate(event.date)
+    const location = event.location
+      ? normalizeLocation(decodeHtmlEntities(event.location))
+      : event.location
     const normalizedEvent = {
       ...event,
-      // Decode HTML entities once at store time; the API serves these
-      // fields verbatim. (categories JSON stays raw — the display category
-      // is decoded when display_events.category is populated.)
-      title: decodeHtmlEntities(event.title),
-      location: event.location ? decodeHtmlEntities(event.location) : event.location,
+      // Decode HTML entities and normalize once at store time; the API serves
+      // these fields verbatim. (categories JSON stays raw — the display
+      // category is decoded when display_events.category is populated.)
+      title: cleanTitle(decodeHtmlEntities(event.title), { date, location }),
+      location,
       city: event.city ? decodeHtmlEntities(event.city) : event.city,
-      date: this.normalizeDate(event.date),
+      date,
       startTime: this.normalizeTime(event.startTime),
       startDate: this.normalizeDate(event.startDate),
       endDate: this.normalizeDate(event.endDate),
@@ -880,13 +966,17 @@ export class EventDatabase {
     // eventId1 (the dropped side) of a high/medium match; surface the
     // dropped row's URL as altUrl only for cross-source matches. Past
     // events are excluded — the query layer already clamps to today, so
-    // they were dead rows.
+    // they were dead rows. The exception is a multi-day run already under
+    // way (an exhibit that opened last week), which shows on today. Only if
+    // the source's latest fetch worked and still lists it: fargomoorhead.org
+    // stores one row per day it has seen a long run, and yesterday's copy
+    // must not resurface alongside today's.
     const transaction = this.db.transaction(() => {
       this.db.prepare("DELETE FROM display_events").run()
       const result = this.db
         .prepare(
           `
-        INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude)
+        INSERT INTO display_events (eventId, title, url, altUrl, location, date, startTime, city, imageUrl, categories, source, latitude, longitude, endDate)
         SELECT
           e.eventId,
           e.title,
@@ -902,29 +992,106 @@ export class EventDatabase {
             LIMIT 1
           ),
           e.location,
-          e.date,
+          MAX(e.date, @today),
           e.startTime,
           e.city,
           e.imageUrl,
           e.categories,
           e.source,
           e.latitude,
-          e.longitude
+          e.longitude,
+          e.endDate
         FROM events e
-        WHERE e.date >= @today
+        WHERE (
+            e.date >= @today
+            OR (
+              e.endDate >= @today
+              AND julianday(e.endDate) - julianday(e.date) >= ${MIN_RUN_DAYS}
+              AND e.lastSeenAt >= (
+                SELECT MAX(r.startedAt) FROM source_runs r
+                WHERE r.source = e.source AND r.status = 'ok'
+              )
+              AND (
+                SELECT r.status FROM source_runs r
+                WHERE r.source = e.source AND r.status <> 'skipped'
+                ORDER BY r.id DESC LIMIT 1
+              ) = 'ok'
+            )
+          )
           AND e.eventId NOT IN (
             SELECT eventId1 FROM event_matches WHERE confidence IN ('high', 'medium')
           )
       `,
         )
         .run({ today: todayInFargo })
+      const held = this.holdStaleEvents()
       this.populateDisplayCategories()
       this.tagRecurringSeries()
+      this.tagOngoingEvents(todayInFargo)
       this.flagPossiblyCancelled()
-      return result.changes
+      return result.changes - held
     })
 
     return transaction()
+  }
+
+  /**
+   * Take events whose title names an earlier year out of the feed (see
+   * staleTitleYear). They stay in `events` and show up in
+   * getDataQualityReport, so they come back on their own if the source fixes
+   * the title. Returns how many rows were removed.
+   */
+  private holdStaleEvents(): number {
+    const rows = this.db
+      .prepare("SELECT id, title, date FROM display_events")
+      .all() as { id: number; title: string; date: string }[]
+    const remove = this.db.prepare("DELETE FROM display_events WHERE id = ?")
+    let held = 0
+    for (const row of rows) {
+      if (staleTitleYear(row.title, row.date) !== null) {
+        remove.run(row.id)
+        held++
+      }
+    }
+    return held
+  }
+
+  /**
+   * Set ongoingThrough on multi-day runs, so one row can stand in for the
+   * whole run. A run's end is the event's own end date when it spans at least
+   * MIN_RUN_DAYS, otherwise the last date of a daily series. A daily series
+   * that reaches the end of the fetch window may well continue, so it gets no
+   * end date rather than a wrong one, and the UI just says "ongoing".
+   */
+  private tagOngoingEvents(today: string): void {
+    this.db.exec(`
+      UPDATE display_events SET ongoingThrough = endDate
+      WHERE endDate IS NOT NULL
+        AND julianday(endDate) - julianday(date) >= ${MIN_RUN_DAYS}
+    `)
+
+    const series = this.db
+      .prepare(
+        `SELECT recurringGroup, source, MAX(date) AS lastDate
+         FROM display_events
+         WHERE recurringCadence = 'daily'
+         GROUP BY recurringGroup`,
+      )
+      .all() as { recurringGroup: string; source: string; lastDate: string }[]
+    const setEnd = this.db.prepare(
+      `UPDATE display_events SET ongoingThrough = ?
+       WHERE recurringGroup = ? AND ongoingThrough IS NULL`,
+    )
+    for (const { recurringGroup, source, lastDate } of series) {
+      const horizon =
+        SOURCE_INFO.find((info) => info.source === source)?.fetchHorizonDays ??
+        14
+      const [y, m, d] = today.split("-").map(Number)
+      const windowEnd = new Date(Date.UTC(y, m - 1, d + horizon - 1))
+        .toISOString()
+        .slice(0, 10)
+      if (lastDate < windowEnd) setEnd.run(lastDate, recurringGroup)
+    }
   }
 
   /**
@@ -990,6 +1157,10 @@ export class EventDatabase {
    * when every row also shares one non-null start time and a non-null
    * location (the usual 14-day fetch window only ever shows 2 occurrences of
    * a weekly event, but the stricter rule keeps two-part workshops intact).
+   * A group on consecutive days at one start time is "daily": an exhibit whose
+   * source lists every open day as its own event. That needs an exhibit-like
+   * event on 2+ days, or 5+ days of anything else, so a comedian's run of
+   * Thursday-to-Saturday shows stays three separate shows.
    * Sports schedules are excluded; weekly games are the product, not noise.
    * Callers run it inside their own transaction.
    */
@@ -997,7 +1168,7 @@ export class EventDatabase {
     const placeholders = SPORTS_SOURCES.map(() => "?").join(", ")
     const rows = this.db
       .prepare(
-        `SELECT id, source, title, location, date, startTime FROM display_events
+        `SELECT id, source, title, location, date, startTime, category FROM display_events
          ${SPORTS_SOURCES.length ? `WHERE source NOT IN (${placeholders})` : ""}`,
       )
       .all(...SPORTS_SOURCES) as {
@@ -1007,6 +1178,7 @@ export class EventDatabase {
       location: string | null
       date: string
       startTime: string | null
+      category: string | null
     }[]
 
     const groups = new Map<string, typeof rows>()
@@ -1036,10 +1208,25 @@ export class EventDatabase {
         gaps.push(dayNumber(dates[i]) - dayNumber(dates[i - 1]))
       }
       const uniform = (n: number) => gaps.every((g) => g === n)
-      const cadence = uniform(7) ? "weekly" : uniform(14) ? "biweekly" : null
+      const first = members[0]
+      const isExhibit =
+        first.category === "Visual Arts" ||
+        /exhibit|gallery|museum/i.test(`${first.title} ${first.location ?? ""}`)
+      // Weekends off still count as consecutive: an exhibit open Mon-Fri.
+      const consecutive =
+        gaps.every((g) => g <= 3) &&
+        gaps.filter((g) => g === 1).length * 2 >= gaps.length &&
+        new Set(members.map((m) => m.startTime)).size === 1
+      const cadence = uniform(7)
+        ? "weekly"
+        : uniform(14)
+          ? "biweekly"
+          : consecutive && dates.length >= (isExhibit ? 2 : 5)
+            ? "daily"
+            : null
       if (!cadence) continue
 
-      if (dates.length === 2) {
+      if (dates.length === 2 && cadence !== "daily") {
         const startTimes = new Set(members.map((m) => m.startTime))
         if (
           cadence !== "weekly" ||
@@ -1133,22 +1320,41 @@ export class EventDatabase {
     }
 
     if (normalizedCategory) {
-      // The display category may be inferred (not in the raw JSON), so match
-      // it exactly as well as substring-matching the upstream names.
-      conditions.push(
-        "(lower(coalesce(category, '')) = ? OR lower(coalesce(categories, '')) LIKE ?)",
-      )
-      params.push(normalizedCategory, `%${normalizedCategory}%`)
+      // Canonical names match exactly, so a row's label and the filter it
+      // appears under always agree. Any other name (an old link to "Jazz &
+      // Blues") still finds rows that carry it upstream.
+      if (isCanonicalCategory(category.trim())) {
+        conditions.push("lower(coalesce(category, '')) = ?")
+        params.push(normalizedCategory)
+      } else {
+        conditions.push(
+          "(lower(coalesce(category, '')) = ? OR lower(coalesce(categories, '')) LIKE ?)",
+        )
+        params.push(normalizedCategory, `%${normalizedCategory}%`)
+      }
     }
 
     // Sports schedules (college athletics, etc.) are high-volume and would
     // bury the rest of the feed, so they're hidden unless explicitly asked
-    // for (the "Show sports" toggle).
-    if (!includeSports && SPORTS_SOURCES.length > 0) {
+    // for (the "Show sports" toggle, or picking Sports in the filter).
+    const wantsSports = includeSports || normalizedCategory === "sports"
+    if (!wantsSports && SPORTS_SOURCES.length > 0) {
       conditions.push(
         `source NOT IN (${SPORTS_SOURCES.map(() => "?").join(", ")})`,
       )
       params.push(...SPORTS_SOURCES)
+    }
+
+    // Same idea for sports and start-date rows from general calendars, except
+    // that a search also finds them: someone typing "volleyball" means it.
+    if (!normalizedQuery && !normalizedCategory) {
+      const hidden = HIDDEN_BY_DEFAULT.filter(
+        (name) => !(name === "Sports" && includeSports),
+      )
+      conditions.push(
+        `coalesce(category, '') NOT IN (${hidden.map(() => "?").join(", ")})`,
+      )
+      params.push(...hidden)
     }
 
     // Student-life calendars and homecomings are aimed at enrolled students;
@@ -1228,10 +1434,7 @@ export class EventDatabase {
     const transaction = this.db.transaction(() => {
       for (const row of allEvents) {
         for (const rule of getActiveCity().venueRules) {
-          if (
-            rule.titlePattern.test(row.title) ||
-            (row.location != null && rule.titlePattern.test(row.location))
-          ) {
+          if (venueRuleMatches(rule, row.title, row.location)) {
             updateStmt.run({
               location: rule.location,
               city: rule.city,
@@ -1353,10 +1556,7 @@ export class EventDatabase {
     const transaction = this.db.transaction(() => {
       for (const row of allEvents) {
         for (const rule of getActiveCity().venueRules) {
-          if (
-            rule.titlePattern.test(row.title) ||
-            (row.location != null && rule.titlePattern.test(row.location))
-          ) {
+          if (venueRuleMatches(rule, row.title, row.location)) {
             if (
               row.location !== rule.location ||
               row.city !== rule.city ||
@@ -1379,6 +1579,81 @@ export class EventDatabase {
     })
     transaction()
     return count
+  }
+
+  /**
+   * What the pipeline couldn't fix on its own: held events, missing venues,
+   * uncategorized rows and upstream tags that need adding to the tables.
+   * Served at /api/health/data-quality and by `npm run quality`.
+   */
+  getDataQualityReport(): DataQualityReport {
+    const today = this.getCurrentDateInTimeZone(this.displayTimeZone)
+    const issueColumns = "source, title, date, url"
+
+    const missingLocation = this.db
+      .prepare(
+        `SELECT ${issueColumns} FROM display_events
+         WHERE location IS NULL AND source <> 'fargoparks.com' AND date >= ?
+         ORDER BY source, date`,
+      )
+      .all(today) as EventIssue[]
+
+    const uncategorized = this.db
+      .prepare(
+        `SELECT ${issueColumns} FROM display_events
+         WHERE category IS NULL AND date >= ?
+         ORDER BY source, date`,
+      )
+      .all(today) as EventIssue[]
+
+    const upcoming = this.db
+      .prepare(
+        `SELECT ${issueColumns}, categories FROM events WHERE date >= ?
+         ORDER BY date`,
+      )
+      .all(today) as (EventIssue & { categories: string | null })[]
+
+    const heldForReview: DataQualityReport["heldForReview"] = []
+    const unmapped = new Map<string, DataQualityReport["unmappedTags"][number]>()
+    for (const { categories, ...event } of upcoming) {
+      const year = staleTitleYear(event.title, event.date)
+      if (year !== null) {
+        heldForReview.push({
+          ...event,
+          reason: `title names ${year}, event is in ${event.date.slice(0, 4)}`,
+        })
+      }
+      for (const tag of this.extractCategoryNames(categories)) {
+        if (isKnownUpstreamTag(tag, event.source)) continue
+        const key = `${event.source}|${tag}`
+        const entry = unmapped.get(key) ?? { source: event.source, tag, count: 0 }
+        entry.count++
+        unmapped.set(key, entry)
+      }
+    }
+
+    const nonCanonicalCategories = this.getDistinctCategories().filter(
+      (name) => !isCanonicalCategory(name),
+    )
+
+    const missingStartTime = this.db
+      .prepare(
+        `SELECT source, COUNT(*) AS count FROM display_events
+         WHERE startTime IS NULL AND date >= ?
+         GROUP BY source ORDER BY count DESC`,
+      )
+      .all(today) as { source: string; count: number }[]
+
+    return {
+      missingLocation,
+      heldForReview,
+      uncategorized,
+      nonCanonicalCategories,
+      unmappedTags: Array.from(unmapped.values()).sort(
+        (a, b) => b.count - a.count,
+      ),
+      missingStartTime,
+    }
   }
 
   close() {

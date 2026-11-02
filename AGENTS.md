@@ -44,6 +44,22 @@ sites run one of these: `tribe-rest.ts` (WordPress The Events Calendar),
 `communico.ts` (LibNet library calendars), `sidearm-sports.ts` (college/junior
 athletics RSS).
 
+## Data quality
+
+Everything below runs at store or rebuild time, so a fix applies to every event on the next run. Fix problems here or in the source's fetcher, never by editing rows.
+
+| What | Where |
+|------|-------|
+| Categories: the canonical list, per-source and shared tag tables, keyword rules | `src/enrichment/categories.ts`. Nothing outside `CANONICAL_CATEGORIES` can reach the API, and a test enforces it. |
+| Title and address cleanup, stale-year check, times from free text | `src/enrichment/normalize.ts`, applied in `insertEvent` |
+| Venue table: one canonical name, address and coordinates per venue | `src/cities/<city>/venues.ts`. Use `locationPattern` unless a title naming the venue proves the event is there. |
+| Hidden by default: `Sports`, `Programs & Registration` | `HIDDEN_BY_DEFAULT`. Filtering to them or searching brings them back. |
+| Holds: an event whose title names an earlier year stays out of the feed until the source fixes it | `holdStaleEvents` |
+
+`npm run quality` (same data at `GET /api/health/data-quality`) lists held events, missing venues, uncategorized events and upstream tags missing from the tables. After adding a source, run it and map any new tags.
+
+`npm test` runs the suite under `tests/`. `better-sqlite3` is built for the Node in `.nvmrc`, so use that version. Test a pipeline change against a copy of the real data, and review every changed row across all sources, including hidden ones: sports rows don't show in default views, so bugs there are easy to miss.
+
 ## Health monitoring
 
 Every fetch/refetch records a row in `source_runs` (status, event count, duration). `GET /api/health/sources` reports per-source health with an overall `ok` boolean (always HTTP 200 — point external monitors at it with a keyword match on `"ok":true`). `/health` stays a pure liveness probe used by the deploy smoke test.

@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import { timeForDateInText, timeFromText } from "../enrichment/normalize"
 import { FargoAPIResponse, FargoEvent, StoredEvent } from "../types/event"
 import {
   DEFAULT_BROWSER_HEADERS,
@@ -6,6 +7,37 @@ import {
   getDateRangeInTimeZone,
   toTimeZoneMidnightIso,
 } from "./shared"
+
+/** Simpleview recurType for "Recurring daily": one continuous run. */
+const RECUR_TYPE_DAILY = 1
+
+/**
+ * "Name, Street, City, ST ZIP" from the API's separate fields. `location` is
+ * only the venue name, and is empty on some events whose address fields are
+ * filled in (planetarium shows have only `address1` and `address2: "Bridges
+ * 167"`). `address1` is free text: it can already hold the city and state, and
+ * isn't always a street at all ("NDSU Challey Hall").
+ */
+export function buildLocation(event: FargoEvent): string | null {
+  const name = (event.location ?? "").trim()
+  const address = (event.address1 ?? "").trim()
+  const unit = (event.address2 ?? "").trim()
+
+  // Some venue names are already a full address.
+  if (/\d/.test(name) && /,\s*(?:ND|MN|SD)\b/i.test(name)) return name
+
+  const venue = name || unit
+  const street = /\d/.test(address) ? address : ""
+  const streetWithUnit =
+    street && name && unit && !street.includes(unit) ? `${street} ${unit}` : street
+  const hasLocality = /\b(?:ND|MN|SD)\b/i.test(street)
+  const locality =
+    event.city && event.state && !hasLocality
+      ? `${event.city}, ${event.state}${event.zip ? ` ${event.zip}` : ""}`
+      : ""
+  const parts = [venue, streetWithUnit, locality].filter(Boolean)
+  return streetWithUnit && parts.length ? parts.join(", ") : venue || null
+}
 
 export class FargoFetcher {
   private readonly clientTimeZone = "America/Chicago"
@@ -136,6 +168,13 @@ export class FargoFetcher {
           "listing.title": 1,
           "listing.url": 1,
           "listing.rankname": 1,
+          // Venue address and the free-text schedule
+          address1: 1,
+          address2: 1,
+          state: 1,
+          zip: 1,
+          times: 1,
+          description: 1,
         },
         hooks: [],
         sort: { date: 1, rank: 1, title_sort: 1 },
@@ -198,16 +237,24 @@ export class FargoFetcher {
   ): Omit<StoredEvent, "id" | "createdAt" | "updatedAt"> {
     const date = this.toDateOnly(event.date)
     const url = `https://www.fargomoorhead.org${event.url}`
-    const startTime = event.startTime || null
+    // Season listings ("Concordia Football") have no structured time but give
+    // each date's kickoff in the description.
+    const startTime =
+      event.startTime ||
+      timeFromText(event.times) ||
+      timeForDateInText(event.description, date)
+    // startDate/endDate span a whole recurrence, so a weekly trivia night has
+    // an endDate months out. Only a daily recurrence is one continuous run.
+    const isRun = event.recurType === RECUR_TYPE_DAILY
     return {
       eventId: this.stableEventId(url, date, startTime),
       title: event.title,
       url,
-      location: event.location || null,
+      location: buildLocation(event),
       date,
       startTime,
       startDate: this.toDateOnly(event.startDate),
-      endDate: this.toDateOnly(event.endDate || event.startDate),
+      endDate: isRun ? this.toDateOnly(event.endDate || event.startDate) : date,
       latitude: event.latitude || null,
       longitude: event.longitude || null,
       city: event.city || null,

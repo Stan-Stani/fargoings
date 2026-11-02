@@ -17,6 +17,22 @@ export function normalizeText(text: string): string {
     .trim()
 }
 
+/**
+ * A title for comparing across sources: no possessives or punctuation, and one
+ * word for each gender ("Womens' Drop-In D&D Night" and "Ladies' Drop-In D&D
+ * Night" compare equal). The word is folded rather than removed, so "Men's
+ * Basketball" and "Women's Basketball" stay different.
+ */
+export function normalizeEventTitle(title: string): string {
+  return normalizeText(title)
+    .replace(/['\u2019]/g, "")
+    .replace(/\b(?:ladies|lady|womens|women|woman)\b/g, "women")
+    .replace(/\b(?:mens|men|gents|gentlemen)\b/g, "men")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 export function tokenize(text: string): string[] {
   return normalizeText(text)
     .replace(/[^\w\s'-]/g, " ") // remove punctuation except apostrophes/hyphens

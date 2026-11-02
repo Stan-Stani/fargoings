@@ -4,8 +4,10 @@ import {
   containsSubstring,
   tokenOverlap,
   geoDistance,
+  normalizeEventTitle,
   normalizeText,
 } from './normalize';
+import { LOCATION_SEE_LINK } from '../enrichment/venues';
 
 export interface MatchScore {
   eventId1: string;
@@ -53,10 +55,33 @@ export function headlinerCore(title: string): string {
     .trim()
 }
 
+/** "women" or "men" when a normalized title names exactly one, else null. */
+function genderDivision(normalizedTitle: string): 'women' | 'men' | null {
+  const women = /\bwomen\b/.test(normalizedTitle);
+  const men = /\bmen\b/.test(normalizedTitle);
+  if (women === men) return null;
+  return women ? 'women' : 'men';
+}
+
 /**
  * Calculate title similarity score (0-1)
  */
 function scoreTitles(title1: string, title2: string): { score: number; reason: string } {
+  const normalized1 = normalizeEventTitle(title1);
+  const normalized2 = normalizeEventTitle(title2);
+
+  // Men's and women's games at the same place and time are two events, however
+  // alike the rest of the title is.
+  if (genderDivision(normalized1) !== genderDivision(normalized2)
+    && genderDivision(normalized1) && genderDivision(normalized2)) {
+    return { score: 0, reason: 'different divisions (men/women)' };
+  }
+
+  // Same title once possessives, punctuation and "ladies"/"women's" are folded.
+  if (normalized1.length >= 4 && normalized1 === normalized2) {
+    return { score: 0.95, reason: 'same title after normalization' };
+  }
+
   // Same headliner, differently dressed (promoter prefix, support acts,
   // venue suffix). Requires a non-trivial core so "Trivia at X" vs
   // "Trivia with Y" can't merge on a one-word generic title.
@@ -98,24 +123,47 @@ function scoreTitles(title1: string, title2: string): { score: number; reason: s
   return { score: Math.max(similarity, overlap * 0.7), reason: 'low similarity' };
 }
 
+/** The name in "Name, Street, City, ST ZIP". */
+function venueName(location: string): string {
+  return location.split(',')[0].trim();
+}
+
+/** The part of a location starting with a street number, normalized. */
+function venueStreet(location: string): string | null {
+  const street = location.split(',').find((part) => /^\s*\d+\s+\S/.test(part));
+  return street ? normalizeText(street) : null;
+}
+
 /**
  * Calculate venue similarity score (0-1)
  */
 function scoreVenues(venue1: string | null, venue2: string | null): { score: number; reason: string } {
-  if (!venue1 || !venue2) {
+  if (!venue1 || !venue2 || venue1 === LOCATION_SEE_LINK || venue2 === LOCATION_SEE_LINK) {
     return { score: 0.5, reason: 'venue unknown' };  // neutral if missing
   }
 
-  if (containsSubstring(venue1, venue2)) {
+  // Compare names, not whole addresses: "Fargo, ND 58102" is common to half
+  // the venues in town and says nothing about whether two are the same place.
+  const name1 = venueName(venue1);
+  const name2 = venueName(venue2);
+
+  if (containsSubstring(name1, name2)) {
     return { score: 1.0, reason: 'venue name match' };
   }
 
-  const overlap = tokenOverlap(venue1, venue2);
+  const overlap = tokenOverlap(name1, name2);
   if (overlap > 0.5) {
     return { score: overlap, reason: `venue token overlap (${Math.round(overlap * 100)}%)` };
   }
 
-  const similarity = stringSimilarity(venue1, venue2);
+  // Differently named, but the same street address: "Brewhalla" and "Drekker
+  // Brewing Company" are one building.
+  const street1 = venueStreet(venue1);
+  if (street1 && street1 === venueStreet(venue2)) {
+    return { score: 0.8, reason: 'same street address' };
+  }
+
+  const similarity = stringSimilarity(name1, name2);
   return { score: similarity, reason: `venue similarity (${Math.round(similarity * 100)}%)` };
 }
 
@@ -260,6 +308,26 @@ function timeToMinutes(time: string): number | null {
   return Number(match[1]) * 60 + Number(match[2])
 }
 
+/**
+ * True when two different titles share a stem: one contains the other, or they
+ * have the same headliner.
+ */
+function isVariantTitle(title1: string, title2: string): boolean {
+  const a = normalizeEventTitle(title1)
+  const b = normalizeEventTitle(title2)
+  if (a === b) return false
+  return a.includes(b) || b.includes(a) || headlinerCore(title1) === headlinerCore(title2)
+}
+
+/** True when both events have start times more than 30 minutes apart. */
+function startTimesDiffer(a: StoredEvent, b: StoredEvent): boolean {
+  if (!a.startTime || !b.startTime) return false
+  const minutes1 = timeToMinutes(a.startTime)
+  const minutes2 = timeToMinutes(b.startTime)
+  if (minutes1 === null || minutes2 === null) return false
+  return Math.abs(minutes1 - minutes2) > 30
+}
+
 export interface SelfMatchOptions {
   minScore?: number
   /**
@@ -305,12 +373,15 @@ export function findSelfMatches(
 
         const [older, newer] = a.id < b.id ? [a, b] : [b, a]
 
-        // Identical URL on the same date is a duplicate regardless of how
-        // the titles drifted — the upstream id churned but the slug didn't.
+        // Identical URL at the same date and time is a duplicate regardless of
+        // how the titles drifted — the upstream id churned but the slug
+        // didn't. A URL can't prove identity across different times: a late
+        // show on the same page as the early one is its own event.
         if (
           older.url &&
           newer.url &&
-          normalizeUrl(older.url) === normalizeUrl(newer.url)
+          normalizeUrl(older.url) === normalizeUrl(newer.url) &&
+          !startTimesDiffer(older, newer)
         ) {
           matches.push({
             eventId1: older.eventId,
@@ -331,17 +402,14 @@ export function findSelfMatches(
         // Distinct start times >30 min apart mean distinct events (back-to-
         // back sessions, recurring slots), never a repost — skip before
         // scoring so near-identical titles can't merge them.
-        if (older.startTime && newer.startTime) {
-          const minutes1 = timeToMinutes(older.startTime)
-          const minutes2 = timeToMinutes(newer.startTime)
-          if (
-            minutes1 !== null &&
-            minutes2 !== null &&
-            Math.abs(minutes1 - minutes2) > 30
-          ) {
-            continue
-          }
-        }
+        if (startTimesDiffer(older, newer)) continue
+
+        // Within one calendar, "Friday Night Magic: Modern" and "Friday Night
+        // Magic: Commander" are two tables, not a repost, however much of the
+        // title they share. Across sources the same wording means dressing
+        // ("X" vs "X w/ Support"), but one source names its own events
+        // deliberately.
+        if (isVariantTitle(older.title, newer.title)) continue
 
         const score = scoreMatch(older, newer)
 

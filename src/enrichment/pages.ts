@@ -20,7 +20,7 @@ import { VenueRule } from "./venues"
  * later upserts (COALESCE), so anything skipped here is retried — and the
  * backlog shrinks — on the next run.
  */
-const MAX_PAGE_FETCHES = 25
+const MAX_PAGE_FETCHES = 100
 
 export async function enrichVenuesFromEventPages(
   db: EventDatabase,

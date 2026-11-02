@@ -8,8 +8,16 @@
  */
 
 export interface VenueRule {
-  /** Regex tested against the event title (case-insensitive) */
-  titlePattern: RegExp
+  /**
+   * Tested against the title and the location. Only for names distinctive
+   * enough that a title mentioning them means the event is there.
+   */
+  titlePattern?: RegExp
+  /**
+   * Tested against the location only: spellings of this venue. Use this for
+   * any name that might appear in a title without the event being there.
+   */
+  locationPattern?: RegExp
   /**
    * More specific regex for matching this venue in raw HTML content (event pages,
    * ticket pages). Should be narrower than titlePattern to avoid false positives
@@ -17,11 +25,32 @@ export interface VenueRule {
    * Consumed by enrichVenuesFromEventPages (src/enrichment/pages.ts).
    */
   htmlPattern?: RegExp
+  /** Canonical "Name, Street, City, ST ZIP" that replaces any match. */
   location: string
   city: string
   latitude: number
   longitude: number
 }
+
+/** Whether a venue rule applies to an event with this title and location. */
+export function venueRuleMatches(
+  rule: VenueRule,
+  title: string,
+  location: string | null,
+): boolean {
+  if (rule.titlePattern?.test(title)) return true
+  if (location == null) return false
+  return Boolean(
+    rule.titlePattern?.test(location) || rule.locationPattern?.test(location),
+  )
+}
+
+/**
+ * Stored when a source confirms an event has no single venue (or names none),
+ * so it isn't reported as missing data. Not a place: the web UI doesn't link
+ * it to a map or group events under it, and dedup treats it as unknown.
+ */
+export const LOCATION_SEE_LINK = "Various / see link"
 
 /**
  * The Events Calendar's iCal export builds LOCATION by joining the venue

@@ -19,6 +19,8 @@
     "refetch": "tsx src/refetch.ts",
     "refetch:underground": "tsx src/refetch.ts --source fargounderground.com",
     "reenrich": "tsx src/reenrich.ts",
+    "quality": "tsx src/report.ts",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
     "build": "tsc",
     "dev": "tsx watch src/index.ts"
   },
